@@ -23,7 +23,7 @@ const release = (overrides: Record<string, unknown> = {}): Record<string, unknow
   dart: '>=3.13.0 <4.0.0',
   shell: { url: 'https://github.com/Aqutter/aqutter.git', path: 'shell', ref: SHA },
   core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: SHA },
-  client: { spec: `github:Aqutter/aqutter#${SHA}&path:/client` },
+  client: { spec: `github:Aqutter/aqutter-js#${SHA}` },
   cli: { min: '0.0.0' },
   ...overrides,
 })

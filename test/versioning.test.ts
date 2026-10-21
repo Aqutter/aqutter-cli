@@ -28,7 +28,7 @@ const EXPECTED: ExpectedProfile = {
   flutterVersion: '3.47.4',
   shellRef: SHELL_SHA,
   coreRef: CORE_SHA,
-  clientSpec: `github:Aqutter/aqutter#${SHELL_SHA}&path:/client`,
+  clientSpec: `github:Aqutter/aqutter-js#${SHELL_SHA}`,
   cliMin: '0.0.0',
 }
 
@@ -150,7 +150,7 @@ describe('.fvmrc', () => {
 describe('package.json', () => {
   const LEGACY = 'github:Aqutter/aqutter#0.0.0&path:/cli'
   const CURRENT = 'github:Aqutter/aqutter-cli#0.0.0'
-  const OLD_CLIENT = 'github:Aqutter/aqutter#0.0.0&path:/client'
+  const OLD_CLIENT = 'github:Aqutter/aqutter-js#0.0.0'
   const PACKAGE = `{
   "dependencies": {
     "@aqutter/aqutter": "${OLD_CLIENT}",
@@ -168,11 +168,12 @@ describe('package.json', () => {
     expect(classifyCliSpec(CURRENT)).toBe('current')
     expect(classifyCliSpec('github:Aqutter/aqutter-cli')).toBe('current')
     expect(classifyCliSpec('^1.2.3')).toBe('other')
-    expect(classifyCliSpec('github:Aqutter/aqutter#0.0.0&path:/client')).toBe('other')
+    expect(classifyCliSpec('github:Aqutter/aqutter-js#0.0.0')).toBe('other')
   })
 
   it('recognises a github client spec and builds the current CLI spec', () => {
     expect(isClientGithubSpec(OLD_CLIENT)).toBe(true)
+    expect(isClientGithubSpec('github:Aqutter/aqutter#0.0.0&path:/client')).toBe(false)
     expect(isClientGithubSpec('^1.0.0')).toBe(false)
     expect(cliInstallSpec('0.2.0')).toBe('github:Aqutter/aqutter-cli#0.2.0')
   })
@@ -316,7 +317,7 @@ describe('diagnose', () => {
   })
 
   it('warns when the client dependency differs from the framework version', () => {
-    const found = levels({ ...goodFacts(), npmSpecs: [{ name: '@aqutter/aqutter', spec: 'github:Aqutter/aqutter#0.0.0&path:/client' }] })
+    const found = levels({ ...goodFacts(), npmSpecs: [{ name: '@aqutter/aqutter', spec: 'github:Aqutter/aqutter-js#0.0.0' }] })
     expect(found).toHaveLength(1)
     expect(found[0]).toMatch(/^warn:@aqutter\/aqutter 與框架版本 0\.1\.0 不一致/)
   })

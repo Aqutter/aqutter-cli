@@ -46,7 +46,7 @@ npx aqutter --version
 npx aqutter init
 ```
 
-之後的步驟見 Aqutter 文件的「快速開始」。網頁端的 `@aqutter/aqutter`（client）在 Aqutter 的 repo 裡，安裝方式見該處說明。
+之後的步驟見 Aqutter 文件的「快速開始」。網頁端的 `@aqutter/aqutter`（client）在 [`Aqutter/aqutter-js`](https://github.com/Aqutter/aqutter-js)，安裝方式見該處說明。
 
 ## 開發本 repo
 

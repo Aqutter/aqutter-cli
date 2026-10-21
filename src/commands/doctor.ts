@@ -5,7 +5,7 @@
 //   1. 本機 Flutter 版本是否符合框架要求
 //   2. <appDir>/pubspec.yaml 的 environment（sdk / flutter）與殼依賴 ref
 //   3. <appDir>/.fvmrc 的 Flutter 版本（只在檔案已存在時檢查；FVM 是選配，框架不要求）
-//   4. package.json 裡 @aqutter/aqutter-cli 的安裝語法、@aqutter/aqutter 的 ref
+//   4. package.json 裡 @aqutter/aqutter-cli 的安裝語法、@aqutter/aqutter（github:Aqutter/aqutter-js#<ref>）的 ref
 //   5. <appDir>/pubspec.lock 鎖的 commit 是否與 release 記載的 commit 一致
 // 「框架版本」取自 release manifest 的 channels.stable（見 expectedProfile、src/manifest.ts）。
 //

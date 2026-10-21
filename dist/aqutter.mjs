@@ -457,7 +457,7 @@ var init_manifestSnapshot = __esm({
   "src/manifestSnapshot.json"() {
     manifestSnapshot_default = {
       schema: 1,
-      generatedAt: "2026-10-21T04:00:00Z",
+      generatedAt: "2026-10-21T08:00:00Z",
       channels: {
         stable: "0.0.0"
       },
@@ -478,7 +478,7 @@ var init_manifestSnapshot = __esm({
             ref: "72f7b067f691d5cb937eb7101f1161bd54676454"
           },
           client: {
-            spec: "github:Aqutter/aqutter#48d58e205967680f1ab1fffab02520014854ae4b&path:/client"
+            spec: "github:Aqutter/aqutter-js#ac7c23b6f8030d97dafa2c798ceb97a90382f6bf"
           },
           cli: {
             min: "0.0.0"
@@ -946,7 +946,7 @@ var init_versioning = __esm({
     };
     LEGACY_CLI_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/cli$/;
     CURRENT_CLI_SPEC = /^github:Aqutter\/aqutter-cli(#.+)?$/;
-    CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/client$/;
+    CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter-js#[^&\s]+$/;
     classifyCliSpec = (spec) => {
       if (LEGACY_CLI_SPEC.test(spec)) {
         return "legacy";
@@ -1825,7 +1825,7 @@ var init_plugin = __esm({
       const json = JSON.parse(readFileSync9(file, "utf8"));
       return /* @__PURE__ */ new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})]);
     };
-    clientRefOf = (spec) => /#([^&]+)&path:\/client$/.exec(spec)?.[1] ?? null;
+    clientRefOf = (spec) => /^github:Aqutter\/aqutter-js#([^&\s]+)$/.exec(spec)?.[1] ?? null;
     create = async (cwd, argv) => {
       const { positional, flags } = parseArgs(argv.filter((arg) => arg !== "--offline"));
       const id = positional[0];

@@ -210,7 +210,7 @@ export const rewriteFvmrc = (text: string | null, version: string): { text: stri
 // 舊語法：子目錄安裝，只有 pnpm 支援。新語法：獨立 repo，四種套件管理器都能裝。
 const LEGACY_CLI_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/cli$/
 const CURRENT_CLI_SPEC = /^github:Aqutter\/aqutter-cli(#.+)?$/
-const CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/client$/
+const CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter-js#[^&\s]+$/
 
 export type CliSpecKind = 'legacy' | 'current' | 'other'
 
@@ -222,7 +222,7 @@ export const classifyCliSpec = (spec: string): CliSpecKind => {
   return CURRENT_CLI_SPEC.test(spec) ? 'current' : 'other'
 }
 
-/** client 依賴是否為 `github:Aqutter/aqutter#<ref>&path:/client` 這種由框架 release 決定的寫法。 */
+/** client 依賴是否為 `github:Aqutter/aqutter-js#<ref>` 這種由框架 release 決定的寫法（舊的子目錄語法不再支援）。 */
 export const isClientGithubSpec = (spec: string): boolean => CLIENT_GITHUB_SPEC.test(spec)
 
 /** 現行的 CLI 安裝字串（Q1：ref 取 CLI 自己的版本，對應同名 tag）。 */
@@ -258,7 +258,7 @@ export interface PackageJsonTarget {
 
 /**
  * 改寫 package.json 內 Aqutter 的依賴；以字串替換保留原有格式，只動需要動的值：
- *   - client：是 `github:Aqutter/aqutter#…&path:/client` 形態時，改為 manifest 的 client spec
+ *   - client：是 `github:Aqutter/aqutter-js#…` 形態時，改為 manifest 的 client spec
  *   - CLI：是舊的子目錄語法時，改為新的獨立 repo 語法；已是新語法或其他形態（例如 npm 版本號）一律不動
  */
 export const rewritePackageJson = (text: string, target: PackageJsonTarget): { text: string, changes: string[] } => {
