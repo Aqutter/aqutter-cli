@@ -9,8 +9,8 @@
 - [x] [aqutter-cli] `pnpm install`，跑 `pnpm typecheck`、`pnpm test`、`pnpm build`，確認匯入後與原本一致（已知基準：`template packaging` 有 1 項在 Windows 上既有失敗，與本計畫無關）
 
 ## Phase 2 — 自足與安裝
-- [ ] [aqutter-cli] 補 `package.json:2` 附近的 `repository`、`bugs`、`homepage`；建立 `README.md`（new），列出四種套件管理器的安裝指令
-- [ ] [aqutter-cli] 在臨時專案以 GitHub 網址（指向工作分支）用 npm、yarn、pnpm 各安裝一次並執行 `aqutter --version`；bun 見 Manual Follow-ups
+- [x] [aqutter-cli] 補 `package.json:2` 附近的 `repository`、`bugs`、`homepage`；建立 `README.md`（new），列出四種套件管理器的安裝指令
+- [x] [aqutter-cli] 在臨時專案以本機 git 網址（指向工作分支）安裝並執行 `aqutter --version`：npm ✅、pnpm ✅；yarn 1.22 在本機 `git+file` 網址回報 `Couldn't find the binary git`（原因未查明），改於 Phase 5 以推送後的 GitHub 網址驗證；bun 見 Manual Follow-ups
 
 ## Phase 3 — 套件管理器偵測
 - [ ] [aqutter-cli] 把 `src/web.ts:68-72` 與 `src/commands/plugin.ts:39-48` 的偵測合併成一處，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試
@@ -27,5 +27,6 @@
 ## Phase 5 — CI、wiki 與驗證
 - [ ] [aqutter-cli] 建立 `.github/workflows/ci.yml`（new）：型別檢查、測試、`dist/` 與原始碼同步、範本的 Flutter 約束與 manifest 的 `flutter.baseline` 一致
 - [ ] [aqutter-cli] 程式碼匯入後初始化 wiki（`kn-project-wikification`）
+- [ ] [aqutter-cli] 推送工作分支後，用 GitHub 網址（`github:Aqutter/aqutter-cli#<分支>`）以 npm、yarn、pnpm 各安裝一次並執行 `aqutter --version`（補驗 yarn）
 - [ ] [aqutter-cli] 全部驗證：`pnpm typecheck`、`pnpm test`、`pnpm build`、`dist/` 同步、`wiki-lint` 硬閘 0 項
 - [ ] [aqutter-cli] 產出下游交接：新安裝網址與 ref，供 `aqutter-nuxt-app` 的計畫使用　需等待 [aqutter-nuxt-app]：其計畫開始
