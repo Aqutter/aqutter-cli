@@ -202,6 +202,7 @@ var init_package = __esm({
       },
       scripts: {
         build: "node scripts/build.mjs",
+        "manifest:sync": "node scripts/syncManifest.mjs",
         typecheck: "tsc --noEmit",
         test: "vitest run"
       },

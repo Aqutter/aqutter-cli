@@ -16,8 +16,8 @@
 - [x] [aqutter-cli] 把 `src/web.ts:68-72`、`src/commands/plugin.ts:39-48` 與 `src/commands/upgrade.ts:65-72` 的偵測合併成 `src/web.ts` 的 `detectPackageManager`，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試
 
 ## Phase 4 — manifest 取得層與指令
-- [ ] [aqutter-cli] 實作 `src/manifest.ts`（new）與 `test/manifest.test.ts`（new）：取得、24 小時快取、逾時、`--offline`、`schema` 過新、格式錯誤、主機允許清單、退回內建快照（Contract §4）
-- [ ] [aqutter-cli] 建立 `src/manifestSnapshot.json`（new）與同步腳本 `scripts/syncManifest.mjs`（new）；`scripts/build.mjs:2` 確保快照打包進 `dist/`
+- [x] [aqutter-cli] 實作 `src/manifest.ts`（new）與 `test/manifest.test.ts`（new）：取得、24 小時快取、逾時、`--offline`、`schema` 過新、格式錯誤、主機允許清單、退回內建快照（Contract §4）
+- [x] [aqutter-cli] 建立 `src/manifestSnapshot.json`（new）與同步腳本 `scripts/syncManifest.mjs`（new）；`scripts/build.mjs:2` 確保快照打包進 `dist/`
 - [ ] [aqutter-cli] 改 `src/commands/init.ts:112`、`src/commands/plugin.ts:85-86` 取 manifest 的 `shell.ref`、`client.spec`
 - [ ] [aqutter-cli] 改 `src/commands/doctor.ts:46-52` 取 `flutter.baseline`、`dart`，lock 比對改用 sha
 - [ ] [aqutter-cli] 改 `src/commands/upgrade.ts`、`src/versioning.ts:209`、`:235`：目標取 manifest、舊依賴語法改寫為新語法，並補測試
