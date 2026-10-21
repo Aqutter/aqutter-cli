@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import type { Project } from '../config.ts'
 import { IS_WIN } from '../shared.ts'
 import { LOCKED_PACKAGES, parsePubspec, rewriteFvmrc, rewritePackageJson, rewritePubspec } from '../versioning.ts'
+import { detectPackageManager, installCommandOf } from '../web.ts'
 import { expectedProfile } from './doctor.ts'
 import type { ExpectedProfile } from './doctor.ts'
 
@@ -60,16 +61,6 @@ export const planUpgrade = (input: UpgradeInput, expected: ExpectedProfile): Upg
   const fvmrc = input.fvmrc === null ? null : (rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? 'invalid')
   const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, expected.shellRef)
   return { pubspec, fvmrc, packageJson, needsPubUpgrade: shellIsGit }
-}
-
-const installCommand = (root: string): string => {
-  if (existsSync(join(root, 'pnpm-lock.yaml'))) {
-    return 'pnpm install'
-  }
-  if (existsSync(join(root, 'yarn.lock'))) {
-    return 'yarn install'
-  }
-  return 'npm install'
 }
 
 export const runUpgrade = async (project: Project, argv: string[]): Promise<void> => {
@@ -147,7 +138,7 @@ export const runUpgrade = async (project: Project, argv: string[]): Promise<void
 
   console.log(`\n[${TAG}] 完成。後續：`)
   if (npmChanged && !dryRun) {
-    console.log(`  ${installCommand(project.root)}    # package.json 的 Aqutter 依賴已改，重新安裝`)
+    console.log(`  ${installCommandOf(detectPackageManager(project.root))}    # package.json 的 Aqutter 依賴已改，重新安裝`)
   }
   console.log('  aqutter doctor    # 確認一致')
   console.log('  注意：android/、ios/、windows/ 等原生檔案是 init 時展開、屬於專案自己的，本指令不會改動。')

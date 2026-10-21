@@ -182,6 +182,14 @@ var init_package = __esm({
       description: "Aqutter CLI\uFF1A\u628A\u65E2\u6709\u7DB2\u9801\u5C08\u6848\u63A5\u4E0A Aqutter \u6BBC\uFF0C\u63D0\u4F9B dev / build / seed / flavor / \u7C3D\u7AE0 \u7B49\u6307\u4EE4\u3002",
       type: "module",
       license: "Apache-2.0",
+      homepage: "https://github.com/Aqutter/aqutter-cli#readme",
+      repository: {
+        type: "git",
+        url: "git+https://github.com/Aqutter/aqutter-cli.git"
+      },
+      bugs: {
+        url: "https://github.com/Aqutter/aqutter-cli/issues"
+      },
       bin: {
         aqutter: "./dist/aqutter.mjs"
       },
@@ -799,357 +807,10 @@ ${middle}${pubspec.slice(end)}`;
   }
 });
 
-// src/commands/plugin.ts
-var plugin_exports = {};
-__export(plugin_exports, {
-  runPlugin: () => runPlugin,
-  toClassName: () => toClassName,
-  toSnake: () => toSnake
-});
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync4 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join6, relative as relative3, resolve as resolve4 } from "node:path";
-var TAG2, fail2, capitalize, toClassName, toSnake, detectPackageManager, runPm, readDependencyNames, create, add, remove, runPlugin;
-var init_plugin = __esm({
-  "src/commands/plugin.ts"() {
-    "use strict";
-    init_package();
-    init_config();
-    init_shared();
-    init_template();
-    init_plugins();
-    init_init();
-    TAG2 = "plugin";
-    fail2 = (message) => {
-      console.error(`[${TAG2}] ${message}`);
-      process.exit(1);
-    };
-    capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
-    toClassName = (id) => id.split("-").map(capitalize).join("");
-    toSnake = (id) => id.replace(/-/g, "_");
-    detectPackageManager = (root) => {
-      if (existsSync6(join6(root, "pnpm-lock.yaml"))) {
-        return "pnpm";
-      }
-      if (existsSync6(join6(root, "yarn.lock"))) {
-        return "yarn";
-      }
-      return "npm";
-    };
-    runPm = (pm, args, cwd) => {
-      console.log(`[${TAG2}] ${pm} ${args.join(" ")}`);
-      const result = spawnSync2(pm, args, { cwd, stdio: "inherit", shell: IS_WIN });
-      if (result.status !== 0) {
-        fail2(`${pm} ${args.join(" ")} \u5931\u6557\uFF08exit ${result.status ?? "signal"}\uFF09\u3002`);
-      }
-    };
-    readDependencyNames = (root) => {
-      const file = join6(root, "package.json");
-      if (!existsSync6(file)) {
-        return /* @__PURE__ */ new Set();
-      }
-      const json = JSON.parse(readFileSync6(file, "utf8"));
-      return /* @__PURE__ */ new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})]);
-    };
-    create = (cwd, argv) => {
-      const { positional, flags } = parseArgs(argv);
-      const id = positional[0];
-      if (!id || !PLUGIN_ID_PATTERN.test(id)) {
-        return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
-      }
-      const dirName = flags.dir ?? `aqutter-plugin-${id}`;
-      const target = resolve4(cwd, dirName);
-      if (existsSync6(target)) {
-        return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
-      }
-      const variables = {
-        id,
-        idSnake: toSnake(id),
-        className: toClassName(id),
-        dartPackage: `aqutter_plugin_${toSnake(id)}`,
-        npmName: flags["npm-name"] ?? `aqutter-plugin-${id}`,
-        shellRef: flags["shell-ref"] ?? package_default.version,
-        clientRef: flags["shell-ref"] ?? package_default.version
-      };
-      const { written } = renderTree(join6(findTemplateRoot(), "plugin"), target, variables);
-      if (flags["shell-path"]) {
-        const shellFlag = flags["shell-path"];
-        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve4(cwd, shellFlag)).split("\\").join("/");
-        const pubspec = join6(target, "pubspec.yaml");
-        writeFileSync4(pubspec, usePathDependency(readFileSync6(pubspec, "utf8"), rel));
-      }
-      console.log(`[${TAG2}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
-      console.log("\n\u4E0B\u4E00\u6B65\uFF1A");
-      console.log(`  cd ${dirName} && pnpm install && flutter pub get && flutter test`);
-      console.log(`  \u4E4B\u5F8C\u5728 App \u5C08\u6848\uFF1Aaqutter plugin add file:../${dirName}`);
-    };
-    add = (cwd, argv) => {
-      const { positional } = parseArgs(argv.filter((arg) => arg !== "--no-install"));
-      const source = positional[0];
-      if (!source) {
-        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin add <\u4F86\u6E90>\uFF08\u5957\u4EF6\u540D\u3001github:owner/repo \u6216 file:\u8DEF\u5F91\uFF09");
-      }
-      const project = loadProject(cwd);
-      const pm = detectPackageManager(project.root);
-      const before = readDependencyNames(project.root);
-      if (!argv.includes("--no-install")) {
-        runPm(pm, pm === "npm" ? ["install", source] : ["add", source], project.root);
-      }
-      const after = readDependencyNames(project.root);
-      const added = [...after].filter((name) => !before.has(name));
-      const npmName = added[0] ?? (before.has(source) ? source : void 0);
-      if (!npmName) {
-        return fail2("\u7121\u6CD5\u5224\u65B7\u5B89\u88DD\u7684 npm \u5957\u4EF6\u540D\uFF1B\u8ACB\u78BA\u8A8D\u5B89\u88DD\u6210\u529F\uFF08\u6216\u5957\u4EF6\u5DF2\u5B58\u5728\u6642\uFF0C\u7528\u5957\u4EF6\u540D\u7576\u4F86\u6E90\uFF09\u3002");
-      }
-      const descriptor = readInstalledDescriptor(project.root, npmName);
-      if (project.config.plugins.some((entry) => entry.id === descriptor.id && entry.npm !== npmName)) {
-        return fail2(`plugin id\u300C${descriptor.id}\u300D\u5DF2\u88AB\u53E6\u4E00\u500B\u5957\u4EF6\u4F7F\u7528\u3002`);
-      }
-      updateConfigPlugins(project, (plugins) => [
-        ...plugins.filter((entry) => entry.id !== descriptor.id),
-        { id: descriptor.id, npm: npmName, dart: descriptor.dart }
-      ].sort((a, b) => a.id.localeCompare(b.id)));
-      console.log(`[${TAG2}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
-    };
-    remove = (cwd, argv) => {
-      const id = argv[0];
-      if (!id) {
-        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id>");
-      }
-      const project = loadProject(cwd);
-      const entry = project.config.plugins.find((plugin) => plugin.id === id);
-      if (!entry) {
-        return fail2(`\u5C08\u6848\u5167\u6C92\u6709 plugin\u300C${id}\u300D\u3002`);
-      }
-      updateConfigPlugins(project, (plugins) => plugins.filter((plugin) => plugin.id !== id));
-      const pm = detectPackageManager(project.root);
-      runPm(pm, ["remove", entry.npm], project.root);
-      console.log(`[${TAG2}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
-    };
-    runPlugin = async (cwd, argv) => {
-      const [sub, ...rest] = argv;
-      switch (sub) {
-        case "create":
-          return create(cwd, rest);
-        case "add":
-          return add(cwd, rest);
-        case "remove":
-          return remove(cwd, rest);
-        case "sync": {
-          const project = loadProject(cwd);
-          syncPlugins(project);
-          console.log(`[${TAG2}] \u5DF2\u540C\u6B65 ${project.config.plugins.length} \u500B plugin\u3002`);
-          return;
-        }
-        case "list": {
-          const project = loadProject(cwd);
-          for (const entry of project.config.plugins) {
-            console.log(`${entry.id}	${entry.npm}	${entry.dart.package}`);
-          }
-          return;
-        }
-        default:
-          return fail2("\u7528\u6CD5\uFF1Aaqutter plugin <create|add|remove|sync|list>");
-      }
-    };
-  }
-});
-
-// src/environments.ts
-import { existsSync as existsSync7 } from "node:fs";
-import { join as join7 } from "node:path";
-var normalize, defaultEnvFileOf, envFileOf, fromConfig, listConfigured, resolveEnvironment;
-var init_environments = __esm({
-  "src/environments.ts"() {
-    "use strict";
-    init_config();
-    init_shared();
-    normalize = (path) => path.replace(/^\.\//, "").replace(/\\/g, "/");
-    defaultEnvFileOf = (project, name) => `${project.config.envDir}/.env.${name}`;
-    envFileOf = (project, name, environment) => environment.envFile ?? defaultEnvFileOf(project, name);
-    fromConfig = (project, name, environment, envFile) => ({
-      name,
-      envFile,
-      flavor: environment.flavor ?? null,
-      signing: environment.signing ?? null,
-      web: effectiveWeb(project.config, name),
-      source: "config"
-    });
-    listConfigured = (project) => {
-      const names = Object.keys(project.config.environments);
-      return names.length > 0 ? `\u5DF2\u8A2D\u5B9A\u7684\u74B0\u5883\uFF1A${names.join("\u3001")}\u3002` : "\u8A2D\u5B9A\u6A94\u9084\u6C92\u6709 environments\uFF1B\u53EF\u7528 `aqutter env add <\u540D\u7A31>` \u65B0\u589E\u3002";
-    };
-    resolveEnvironment = (project, value) => {
-      if (value === "") {
-        return { ok: false, error: "`--env` / `-e` \u9700\u8981\u503C\uFF08\u74B0\u5883\u540D\uFF0C\u6216\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF09\u3002" };
-      }
-      const environments = project.config.environments;
-      const configured = Object.hasOwn(environments, value) ? environments[value] : void 0;
-      if (configured) {
-        const envFile2 = envFileOf(project, value, configured);
-        if (!existsSync7(join7(project.root, envFile2))) {
-          return {
-            ok: false,
-            error: `\u74B0\u5883\u300C${value}\u300D\u7684 env \u6A94 \`${envFile2}\` \u4E0D\u5B58\u5728\u3002\u8ACB\u7531 ${project.config.envDir}/.env.example \u8907\u88FD\u4E00\u4EFD\uFF0C\u6216\u4FEE\u6B63 aqutter.config.json \u7684 environments.${value}.envFile\u3002`
-          };
-        }
-        return { ok: true, value: fromConfig(project, value, configured, envFile2) };
-      }
-      const envFile = resolveEnvFile(project, value);
-      if (envFile) {
-        const match = Object.entries(environments).find(([name, environment]) => normalize(envFileOf(project, name, environment)) === normalize(envFile));
-        if (match) {
-          return { ok: true, value: fromConfig(project, match[0], match[1], envFile) };
-        }
-        return {
-          ok: true,
-          value: { name: envNameOf(envFile), envFile, flavor: null, signing: null, web: project.config.web, source: "path" }
-        };
-      }
-      const dir = project.config.envDir;
-      const conventional = ENVIRONMENT_NAME.test(value) && existsSync7(join7(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
-      const hint = conventional ? `\u5075\u6E2C\u5230 \`${conventional}\` \u5B58\u5728\uFF0C\u4F46\u300C${value}\u300D\u4E0D\u5728\u8A2D\u5B9A\u6A94\u88E1\uFF1A\u7528 \`aqutter env add ${value}\` \u767B\u8A18\u5B83\uFF0C\u6216\u6539\u7528 -e ${conventional}\u3002` : `\u4E5F\u53EF\u4EE5\u7D66\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF08\u4F8B\u5982 ${dir}/.env.uat\uFF09\u3002`;
-      return { ok: false, error: `\u627E\u4E0D\u5230\u74B0\u5883\u6216 env \u6A94\u300C${value}\u300D\u3002${listConfigured(project)}${hint}` };
-    };
-  }
-});
-
-// src/menu.ts
-import { existsSync as existsSync8, readFileSync as readFileSync7, readdirSync as readdirSync3 } from "node:fs";
-import { join as join8 } from "node:path";
-var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
-var init_menu = __esm({
-  "src/menu.ts"() {
-    "use strict";
-    ENV_PREFIX = ".env.";
-    SIGNING_FILE = /^signing\.(.+)\.json$/;
-    EXAMPLE_MARK = ".example";
-    isExample = (name) => name.includes(EXAMPLE_MARK);
-    SIGNING_PLATFORMS = ["ios", "macos", "windows"];
-    envPathOf = (project, name) => `${project.config.envDir}/${ENV_PREFIX}${name}`;
-    signingPathOf = (name) => `signing/signing.${name}.json`;
-    listDir = (dir) => existsSync8(dir) ? readdirSync3(dir) : [];
-    listEnvFiles = (project) => {
-      return listDir(join8(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
-        path: `${project.config.envDir}/${name}`,
-        name: name.slice(ENV_PREFIX.length)
-      }));
-    };
-    readIfExists = (path) => existsSync8(path) ? readFileSync7(path, "utf8") : "";
-    listFlavors = (project) => {
-      const found = /* @__PURE__ */ new Map();
-      const add2 = (name, platform) => {
-        const platforms = found.get(name) ?? /* @__PURE__ */ new Set();
-        platforms.add(platform);
-        found.set(name, platforms);
-      };
-      const gradle = readIfExists(join8(project.appDir, "android", "app", "build.gradle.kts"));
-      for (const match of gradle.matchAll(/create\("([a-z][a-z0-9]*)"\)/g)) {
-        add2(match[1], "android");
-      }
-      for (const platform of ["ios", "macos"]) {
-        const pbxproj = readIfExists(join8(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
-        for (const match of pbxproj.matchAll(/name = "Release-([a-z][a-z0-9]*)";/g)) {
-          add2(match[1], platform);
-        }
-      }
-      return [...found.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, platforms]) => ({
-        name,
-        platforms: [...platforms]
-      }));
-    };
-    listSigningConfigs = (project) => {
-      const dir = join8(project.appDir, "signing");
-      return listDir(dir).filter((name) => SIGNING_FILE.test(name) && !isExample(name)).sort().map((name) => {
-        let platforms = [];
-        try {
-          platforms = Object.keys(JSON.parse(readFileSync7(join8(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
-        } catch {
-        }
-        return {
-          path: `signing/${name}`,
-          name: SIGNING_FILE.exec(name)[1],
-          platforms
-        };
-      });
-    };
-    resolveXEnv = (project, flags, {
-      tag,
-      withSigning
-    }) => {
-      const xEnv = flags["x-env"] ?? null;
-      const configured = xEnv !== null && Object.hasOwn(project.config.environments, xEnv);
-      const envPath = flags.env ?? (xEnv ? configured ? xEnv : envPathOf(project, xEnv) : null);
-      let flavor = flags.flavor ?? null;
-      if (configured) {
-        return { envPath, flavor, signingPath: flags.signing ?? null };
-      }
-      if (flavor === null && xEnv) {
-        if (listFlavors(project).some((entry) => entry.name === xEnv)) {
-          flavor = xEnv;
-        } else {
-          console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u672A\u5EFA flavor\u300C${xEnv}\u300D\uFF0C\u4E0D\u5E36 --flavor\u3002`);
-        }
-      }
-      let signingPath = flags.signing ?? null;
-      if (withSigning && signingPath === null && xEnv) {
-        const candidate = signingPathOf(xEnv);
-        if (existsSync8(join8(project.appDir, candidate))) {
-          signingPath = candidate;
-        } else {
-          console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u627E\u4E0D\u5230 ${candidate}\uFF0C\u4E0D\u5E36 --signing\u3002`);
-        }
-      }
-      return {
-        envPath,
-        flavor,
-        signingPath
-      };
-    };
-    printOptions = (title, options) => {
-      console.log(`
-${title}`);
-      options.forEach((option, index) => console.log(`  ${index + 1}) ${option.label}`));
-    };
-    chooseOne = async (prompter, title, options, defaultIndex = null) => {
-      printOptions(title, options);
-      const hint = defaultIndex === null ? "" : ` [${defaultIndex + 1}]`;
-      for (; ; ) {
-        const answer = await prompter.ask(`\u8F38\u5165\u7DE8\u865F${hint}\uFF1A`);
-        if (answer === "" && defaultIndex !== null) {
-          return options[defaultIndex];
-        }
-        const index = Number.parseInt(answer, 10) - 1;
-        if (Number.isInteger(index) && index >= 0 && index < options.length) {
-          return options[index];
-        }
-        console.log("  \u7121\u6548\u7684\u9078\u64C7\uFF0C\u8ACB\u91CD\u65B0\u8F38\u5165\u3002");
-      }
-    };
-    chooseMany = async (prompter, title, options) => {
-      printOptions(title, options);
-      for (; ; ) {
-        const answer = (await prompter.ask("\u8F38\u5165\u7DE8\u865F\uFF08\u53EF\u591A\u9078\uFF0C\u9017\u865F\u6216\u7A7A\u767D\u5206\u9694\uFF1Ball\uFF1D\u5168\u90E8\uFF09\uFF1A")).toLowerCase();
-        if (answer === "all") {
-          return [...options];
-        }
-        const tokens = answer.split(/[\s,]+/).filter(Boolean);
-        const indexes = tokens.map((token) => Number.parseInt(token, 10) - 1);
-        const valid = tokens.length > 0 && indexes.every((index) => Number.isInteger(index) && index >= 0 && index < options.length);
-        if (valid) {
-          const picked = new Set(indexes);
-          return options.filter((_, index) => picked.has(index));
-        }
-        console.log("  \u7121\u6548\u7684\u9078\u64C7\uFF0C\u8ACB\u91CD\u65B0\u8F38\u5165\u3002");
-      }
-    };
-  }
-});
-
 // src/web.ts
-import { existsSync as existsSync9, readFileSync as readFileSync8 } from "node:fs";
-import { join as join9 } from "node:path";
-var parseEnvFile, execPrefix, withExec, envFromFile, shellInvocation, fill, nuxtAdapter, viteAdapter, nextAdapter, commandDev, commandGenerate, createWebAdapter;
+import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
+import { join as join6 } from "node:path";
+var parseEnvFile, detectPackageManager, EXEC_PREFIX, execPrefixOf, execPrefix, installCommandOf, addArgs, withExec, envFromFile, shellInvocation, fill, nuxtAdapter, viteAdapter, nextAdapter, commandDev, commandGenerate, createWebAdapter;
 var init_web = __esm({
   "src/web.ts"() {
     "use strict";
@@ -1157,7 +818,7 @@ var init_web = __esm({
     init_shared();
     parseEnvFile = (path) => {
       const result = {};
-      for (const rawLine of readFileSync8(path, "utf8").split(/\r?\n/)) {
+      for (const rawLine of readFileSync6(path, "utf8").split(/\r?\n/)) {
         const line = rawLine.trim();
         if (line === "" || line.startsWith("#")) {
           continue;
@@ -1177,20 +838,33 @@ var init_web = __esm({
       }
       return result;
     };
-    execPrefix = (project) => {
-      if (existsSync9(join9(project.root, "pnpm-lock.yaml"))) {
-        return { command: "pnpm", args: ["exec"] };
+    detectPackageManager = (root) => {
+      if (existsSync6(join6(root, "pnpm-lock.yaml"))) {
+        return "pnpm";
       }
-      if (existsSync9(join9(project.root, "yarn.lock"))) {
-        return { command: "yarn", args: [] };
+      if (existsSync6(join6(root, "yarn.lock"))) {
+        return "yarn";
       }
-      return { command: "npx", args: ["--no-install"] };
+      if (existsSync6(join6(root, "bun.lock")) || existsSync6(join6(root, "bun.lockb"))) {
+        return "bun";
+      }
+      return "npm";
     };
+    EXEC_PREFIX = {
+      pnpm: { command: "pnpm", args: ["exec"] },
+      yarn: { command: "yarn", args: [] },
+      bun: { command: "bunx", args: [] },
+      npm: { command: "npx", args: ["--no-install"] }
+    };
+    execPrefixOf = (manager) => EXEC_PREFIX[manager];
+    execPrefix = (project) => execPrefixOf(detectPackageManager(project.root));
+    installCommandOf = (manager) => `${manager} install`;
+    addArgs = (manager, source) => manager === "npm" ? ["install", source] : ["add", source];
     withExec = (project, bin, args, env) => {
       const prefix = execPrefix(project);
       return { command: prefix.command, args: [...prefix.args, bin, ...args], env };
     };
-    envFromFile = (project, envFile) => parseEnvFile(join9(project.root, envFile));
+    envFromFile = (project, envFile) => parseEnvFile(join6(project.root, envFile));
     shellInvocation = (command) => {
       return IS_WIN ? { command: "cmd", args: ["/c", command] } : { command: "sh", args: ["-c", command] };
     };
@@ -1280,6 +954,345 @@ var init_web = __esm({
         dev: devCommand ? commandDev(project, devCommand) : base.dev,
         generate: buildCommand ? commandGenerate(project, prepareCommand, buildCommand) : base.generate
       };
+    };
+  }
+});
+
+// src/commands/plugin.ts
+var plugin_exports = {};
+__export(plugin_exports, {
+  runPlugin: () => runPlugin,
+  toClassName: () => toClassName,
+  toSnake: () => toSnake
+});
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { existsSync as existsSync7, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { isAbsolute as isAbsolute3, join as join7, relative as relative3, resolve as resolve4 } from "node:path";
+var TAG2, fail2, capitalize, toClassName, toSnake, runPm, readDependencyNames, create, add, remove, runPlugin;
+var init_plugin = __esm({
+  "src/commands/plugin.ts"() {
+    "use strict";
+    init_package();
+    init_config();
+    init_shared();
+    init_template();
+    init_plugins();
+    init_web();
+    init_init();
+    TAG2 = "plugin";
+    fail2 = (message) => {
+      console.error(`[${TAG2}] ${message}`);
+      process.exit(1);
+    };
+    capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+    toClassName = (id) => id.split("-").map(capitalize).join("");
+    toSnake = (id) => id.replace(/-/g, "_");
+    runPm = (pm, args, cwd) => {
+      console.log(`[${TAG2}] ${pm} ${args.join(" ")}`);
+      const result = spawnSync2(pm, args, { cwd, stdio: "inherit", shell: IS_WIN });
+      if (result.status !== 0) {
+        fail2(`${pm} ${args.join(" ")} \u5931\u6557\uFF08exit ${result.status ?? "signal"}\uFF09\u3002`);
+      }
+    };
+    readDependencyNames = (root) => {
+      const file = join7(root, "package.json");
+      if (!existsSync7(file)) {
+        return /* @__PURE__ */ new Set();
+      }
+      const json = JSON.parse(readFileSync7(file, "utf8"));
+      return /* @__PURE__ */ new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})]);
+    };
+    create = (cwd, argv) => {
+      const { positional, flags } = parseArgs(argv);
+      const id = positional[0];
+      if (!id || !PLUGIN_ID_PATTERN.test(id)) {
+        return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
+      }
+      const dirName = flags.dir ?? `aqutter-plugin-${id}`;
+      const target = resolve4(cwd, dirName);
+      if (existsSync7(target)) {
+        return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
+      }
+      const variables = {
+        id,
+        idSnake: toSnake(id),
+        className: toClassName(id),
+        dartPackage: `aqutter_plugin_${toSnake(id)}`,
+        npmName: flags["npm-name"] ?? `aqutter-plugin-${id}`,
+        shellRef: flags["shell-ref"] ?? package_default.version,
+        clientRef: flags["shell-ref"] ?? package_default.version
+      };
+      const { written } = renderTree(join7(findTemplateRoot(), "plugin"), target, variables);
+      if (flags["shell-path"]) {
+        const shellFlag = flags["shell-path"];
+        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve4(cwd, shellFlag)).split("\\").join("/");
+        const pubspec = join7(target, "pubspec.yaml");
+        writeFileSync4(pubspec, usePathDependency(readFileSync7(pubspec, "utf8"), rel));
+      }
+      console.log(`[${TAG2}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
+      console.log("\n\u4E0B\u4E00\u6B65\uFF1A");
+      console.log(`  cd ${dirName} && pnpm install && flutter pub get && flutter test`);
+      console.log(`  \u4E4B\u5F8C\u5728 App \u5C08\u6848\uFF1Aaqutter plugin add file:../${dirName}`);
+    };
+    add = (cwd, argv) => {
+      const { positional } = parseArgs(argv.filter((arg) => arg !== "--no-install"));
+      const source = positional[0];
+      if (!source) {
+        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin add <\u4F86\u6E90>\uFF08\u5957\u4EF6\u540D\u3001github:owner/repo \u6216 file:\u8DEF\u5F91\uFF09");
+      }
+      const project = loadProject(cwd);
+      const pm = detectPackageManager(project.root);
+      const before = readDependencyNames(project.root);
+      if (!argv.includes("--no-install")) {
+        runPm(pm, addArgs(pm, source), project.root);
+      }
+      const after = readDependencyNames(project.root);
+      const added = [...after].filter((name) => !before.has(name));
+      const npmName = added[0] ?? (before.has(source) ? source : void 0);
+      if (!npmName) {
+        return fail2("\u7121\u6CD5\u5224\u65B7\u5B89\u88DD\u7684 npm \u5957\u4EF6\u540D\uFF1B\u8ACB\u78BA\u8A8D\u5B89\u88DD\u6210\u529F\uFF08\u6216\u5957\u4EF6\u5DF2\u5B58\u5728\u6642\uFF0C\u7528\u5957\u4EF6\u540D\u7576\u4F86\u6E90\uFF09\u3002");
+      }
+      const descriptor = readInstalledDescriptor(project.root, npmName);
+      if (project.config.plugins.some((entry) => entry.id === descriptor.id && entry.npm !== npmName)) {
+        return fail2(`plugin id\u300C${descriptor.id}\u300D\u5DF2\u88AB\u53E6\u4E00\u500B\u5957\u4EF6\u4F7F\u7528\u3002`);
+      }
+      updateConfigPlugins(project, (plugins) => [
+        ...plugins.filter((entry) => entry.id !== descriptor.id),
+        { id: descriptor.id, npm: npmName, dart: descriptor.dart }
+      ].sort((a, b) => a.id.localeCompare(b.id)));
+      console.log(`[${TAG2}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
+    };
+    remove = (cwd, argv) => {
+      const id = argv[0];
+      if (!id) {
+        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id>");
+      }
+      const project = loadProject(cwd);
+      const entry = project.config.plugins.find((plugin) => plugin.id === id);
+      if (!entry) {
+        return fail2(`\u5C08\u6848\u5167\u6C92\u6709 plugin\u300C${id}\u300D\u3002`);
+      }
+      updateConfigPlugins(project, (plugins) => plugins.filter((plugin) => plugin.id !== id));
+      const pm = detectPackageManager(project.root);
+      runPm(pm, ["remove", entry.npm], project.root);
+      console.log(`[${TAG2}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
+    };
+    runPlugin = async (cwd, argv) => {
+      const [sub, ...rest] = argv;
+      switch (sub) {
+        case "create":
+          return create(cwd, rest);
+        case "add":
+          return add(cwd, rest);
+        case "remove":
+          return remove(cwd, rest);
+        case "sync": {
+          const project = loadProject(cwd);
+          syncPlugins(project);
+          console.log(`[${TAG2}] \u5DF2\u540C\u6B65 ${project.config.plugins.length} \u500B plugin\u3002`);
+          return;
+        }
+        case "list": {
+          const project = loadProject(cwd);
+          for (const entry of project.config.plugins) {
+            console.log(`${entry.id}	${entry.npm}	${entry.dart.package}`);
+          }
+          return;
+        }
+        default:
+          return fail2("\u7528\u6CD5\uFF1Aaqutter plugin <create|add|remove|sync|list>");
+      }
+    };
+  }
+});
+
+// src/environments.ts
+import { existsSync as existsSync8 } from "node:fs";
+import { join as join8 } from "node:path";
+var normalize, defaultEnvFileOf, envFileOf, fromConfig, listConfigured, resolveEnvironment;
+var init_environments = __esm({
+  "src/environments.ts"() {
+    "use strict";
+    init_config();
+    init_shared();
+    normalize = (path) => path.replace(/^\.\//, "").replace(/\\/g, "/");
+    defaultEnvFileOf = (project, name) => `${project.config.envDir}/.env.${name}`;
+    envFileOf = (project, name, environment) => environment.envFile ?? defaultEnvFileOf(project, name);
+    fromConfig = (project, name, environment, envFile) => ({
+      name,
+      envFile,
+      flavor: environment.flavor ?? null,
+      signing: environment.signing ?? null,
+      web: effectiveWeb(project.config, name),
+      source: "config"
+    });
+    listConfigured = (project) => {
+      const names = Object.keys(project.config.environments);
+      return names.length > 0 ? `\u5DF2\u8A2D\u5B9A\u7684\u74B0\u5883\uFF1A${names.join("\u3001")}\u3002` : "\u8A2D\u5B9A\u6A94\u9084\u6C92\u6709 environments\uFF1B\u53EF\u7528 `aqutter env add <\u540D\u7A31>` \u65B0\u589E\u3002";
+    };
+    resolveEnvironment = (project, value) => {
+      if (value === "") {
+        return { ok: false, error: "`--env` / `-e` \u9700\u8981\u503C\uFF08\u74B0\u5883\u540D\uFF0C\u6216\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF09\u3002" };
+      }
+      const environments = project.config.environments;
+      const configured = Object.hasOwn(environments, value) ? environments[value] : void 0;
+      if (configured) {
+        const envFile2 = envFileOf(project, value, configured);
+        if (!existsSync8(join8(project.root, envFile2))) {
+          return {
+            ok: false,
+            error: `\u74B0\u5883\u300C${value}\u300D\u7684 env \u6A94 \`${envFile2}\` \u4E0D\u5B58\u5728\u3002\u8ACB\u7531 ${project.config.envDir}/.env.example \u8907\u88FD\u4E00\u4EFD\uFF0C\u6216\u4FEE\u6B63 aqutter.config.json \u7684 environments.${value}.envFile\u3002`
+          };
+        }
+        return { ok: true, value: fromConfig(project, value, configured, envFile2) };
+      }
+      const envFile = resolveEnvFile(project, value);
+      if (envFile) {
+        const match = Object.entries(environments).find(([name, environment]) => normalize(envFileOf(project, name, environment)) === normalize(envFile));
+        if (match) {
+          return { ok: true, value: fromConfig(project, match[0], match[1], envFile) };
+        }
+        return {
+          ok: true,
+          value: { name: envNameOf(envFile), envFile, flavor: null, signing: null, web: project.config.web, source: "path" }
+        };
+      }
+      const dir = project.config.envDir;
+      const conventional = ENVIRONMENT_NAME.test(value) && existsSync8(join8(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
+      const hint = conventional ? `\u5075\u6E2C\u5230 \`${conventional}\` \u5B58\u5728\uFF0C\u4F46\u300C${value}\u300D\u4E0D\u5728\u8A2D\u5B9A\u6A94\u88E1\uFF1A\u7528 \`aqutter env add ${value}\` \u767B\u8A18\u5B83\uFF0C\u6216\u6539\u7528 -e ${conventional}\u3002` : `\u4E5F\u53EF\u4EE5\u7D66\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF08\u4F8B\u5982 ${dir}/.env.uat\uFF09\u3002`;
+      return { ok: false, error: `\u627E\u4E0D\u5230\u74B0\u5883\u6216 env \u6A94\u300C${value}\u300D\u3002${listConfigured(project)}${hint}` };
+    };
+  }
+});
+
+// src/menu.ts
+import { existsSync as existsSync9, readFileSync as readFileSync8, readdirSync as readdirSync3 } from "node:fs";
+import { join as join9 } from "node:path";
+var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
+var init_menu = __esm({
+  "src/menu.ts"() {
+    "use strict";
+    ENV_PREFIX = ".env.";
+    SIGNING_FILE = /^signing\.(.+)\.json$/;
+    EXAMPLE_MARK = ".example";
+    isExample = (name) => name.includes(EXAMPLE_MARK);
+    SIGNING_PLATFORMS = ["ios", "macos", "windows"];
+    envPathOf = (project, name) => `${project.config.envDir}/${ENV_PREFIX}${name}`;
+    signingPathOf = (name) => `signing/signing.${name}.json`;
+    listDir = (dir) => existsSync9(dir) ? readdirSync3(dir) : [];
+    listEnvFiles = (project) => {
+      return listDir(join9(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
+        path: `${project.config.envDir}/${name}`,
+        name: name.slice(ENV_PREFIX.length)
+      }));
+    };
+    readIfExists = (path) => existsSync9(path) ? readFileSync8(path, "utf8") : "";
+    listFlavors = (project) => {
+      const found = /* @__PURE__ */ new Map();
+      const add2 = (name, platform) => {
+        const platforms = found.get(name) ?? /* @__PURE__ */ new Set();
+        platforms.add(platform);
+        found.set(name, platforms);
+      };
+      const gradle = readIfExists(join9(project.appDir, "android", "app", "build.gradle.kts"));
+      for (const match of gradle.matchAll(/create\("([a-z][a-z0-9]*)"\)/g)) {
+        add2(match[1], "android");
+      }
+      for (const platform of ["ios", "macos"]) {
+        const pbxproj = readIfExists(join9(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
+        for (const match of pbxproj.matchAll(/name = "Release-([a-z][a-z0-9]*)";/g)) {
+          add2(match[1], platform);
+        }
+      }
+      return [...found.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, platforms]) => ({
+        name,
+        platforms: [...platforms]
+      }));
+    };
+    listSigningConfigs = (project) => {
+      const dir = join9(project.appDir, "signing");
+      return listDir(dir).filter((name) => SIGNING_FILE.test(name) && !isExample(name)).sort().map((name) => {
+        let platforms = [];
+        try {
+          platforms = Object.keys(JSON.parse(readFileSync8(join9(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
+        } catch {
+        }
+        return {
+          path: `signing/${name}`,
+          name: SIGNING_FILE.exec(name)[1],
+          platforms
+        };
+      });
+    };
+    resolveXEnv = (project, flags, {
+      tag,
+      withSigning
+    }) => {
+      const xEnv = flags["x-env"] ?? null;
+      const configured = xEnv !== null && Object.hasOwn(project.config.environments, xEnv);
+      const envPath = flags.env ?? (xEnv ? configured ? xEnv : envPathOf(project, xEnv) : null);
+      let flavor = flags.flavor ?? null;
+      if (configured) {
+        return { envPath, flavor, signingPath: flags.signing ?? null };
+      }
+      if (flavor === null && xEnv) {
+        if (listFlavors(project).some((entry) => entry.name === xEnv)) {
+          flavor = xEnv;
+        } else {
+          console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u672A\u5EFA flavor\u300C${xEnv}\u300D\uFF0C\u4E0D\u5E36 --flavor\u3002`);
+        }
+      }
+      let signingPath = flags.signing ?? null;
+      if (withSigning && signingPath === null && xEnv) {
+        const candidate = signingPathOf(xEnv);
+        if (existsSync9(join9(project.appDir, candidate))) {
+          signingPath = candidate;
+        } else {
+          console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u627E\u4E0D\u5230 ${candidate}\uFF0C\u4E0D\u5E36 --signing\u3002`);
+        }
+      }
+      return {
+        envPath,
+        flavor,
+        signingPath
+      };
+    };
+    printOptions = (title, options) => {
+      console.log(`
+${title}`);
+      options.forEach((option, index) => console.log(`  ${index + 1}) ${option.label}`));
+    };
+    chooseOne = async (prompter, title, options, defaultIndex = null) => {
+      printOptions(title, options);
+      const hint = defaultIndex === null ? "" : ` [${defaultIndex + 1}]`;
+      for (; ; ) {
+        const answer = await prompter.ask(`\u8F38\u5165\u7DE8\u865F${hint}\uFF1A`);
+        if (answer === "" && defaultIndex !== null) {
+          return options[defaultIndex];
+        }
+        const index = Number.parseInt(answer, 10) - 1;
+        if (Number.isInteger(index) && index >= 0 && index < options.length) {
+          return options[index];
+        }
+        console.log("  \u7121\u6548\u7684\u9078\u64C7\uFF0C\u8ACB\u91CD\u65B0\u8F38\u5165\u3002");
+      }
+    };
+    chooseMany = async (prompter, title, options) => {
+      printOptions(title, options);
+      for (; ; ) {
+        const answer = (await prompter.ask("\u8F38\u5165\u7DE8\u865F\uFF08\u53EF\u591A\u9078\uFF0C\u9017\u865F\u6216\u7A7A\u767D\u5206\u9694\uFF1Ball\uFF1D\u5168\u90E8\uFF09\uFF1A")).toLowerCase();
+        if (answer === "all") {
+          return [...options];
+        }
+        const tokens = answer.split(/[\s,]+/).filter(Boolean);
+        const indexes = tokens.map((token) => Number.parseInt(token, 10) - 1);
+        const valid = tokens.length > 0 && indexes.every((index) => Number.isInteger(index) && index >= 0 && index < options.length);
+        if (valid) {
+          const picked = new Set(indexes);
+          return options.filter((_, index) => picked.has(index));
+        }
+        console.log("  \u7121\u6548\u7684\u9078\u64C7\uFF0C\u8ACB\u91CD\u65B0\u8F38\u5165\u3002");
+      }
     };
   }
 });
@@ -3666,12 +3679,13 @@ __export(upgrade_exports, {
 import { spawnSync as spawnSync6 } from "node:child_process";
 import { existsSync as existsSync14, readFileSync as readFileSync14, writeFileSync as writeFileSync8 } from "node:fs";
 import { join as join16 } from "node:path";
-var TAG8, fail7, planUpgrade, installCommand, runUpgrade;
+var TAG8, fail7, planUpgrade, runUpgrade;
 var init_upgrade = __esm({
   "src/commands/upgrade.ts"() {
     "use strict";
     init_shared();
     init_versioning();
+    init_web();
     init_doctor();
     TAG8 = "upgrade";
     fail7 = (message) => {
@@ -3689,15 +3703,6 @@ var init_upgrade = __esm({
       const fvmrc = input.fvmrc === null ? null : rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? "invalid";
       const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, expected.shellRef);
       return { pubspec, fvmrc, packageJson, needsPubUpgrade: shellIsGit };
-    };
-    installCommand = (root) => {
-      if (existsSync14(join16(root, "pnpm-lock.yaml"))) {
-        return "pnpm install";
-      }
-      if (existsSync14(join16(root, "yarn.lock"))) {
-        return "yarn install";
-      }
-      return "npm install";
     };
     runUpgrade = async (project, argv) => {
       const dryRun = argv.includes("--dry-run");
@@ -3765,7 +3770,7 @@ var init_upgrade = __esm({
       console.log(`
 [${TAG8}] \u5B8C\u6210\u3002\u5F8C\u7E8C\uFF1A`);
       if (npmChanged && !dryRun) {
-        console.log(`  ${installCommand(project.root)}    # package.json \u7684 Aqutter \u4F9D\u8CF4\u5DF2\u6539\uFF0C\u91CD\u65B0\u5B89\u88DD`);
+        console.log(`  ${installCommandOf(detectPackageManager(project.root))}    # package.json \u7684 Aqutter \u4F9D\u8CF4\u5DF2\u6539\uFF0C\u91CD\u65B0\u5B89\u88DD`);
       }
       console.log("  aqutter doctor    # \u78BA\u8A8D\u4E00\u81F4");
       console.log("  \u6CE8\u610F\uFF1Aandroid/\u3001ios/\u3001windows/ \u7B49\u539F\u751F\u6A94\u6848\u662F init \u6642\u5C55\u958B\u3001\u5C6C\u65BC\u5C08\u6848\u81EA\u5DF1\u7684\uFF0C\u672C\u6307\u4EE4\u4E0D\u6703\u6539\u52D5\u3002");

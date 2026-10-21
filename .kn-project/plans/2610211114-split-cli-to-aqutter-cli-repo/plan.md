@@ -134,12 +134,13 @@ CLI 內建預設的 manifest 網址，可被環境變數 `AQUTTER_MANIFEST_URL` 
 
 - `src/commands/init.ts:112`（`const shellRef = flags['shell-ref'] ?? pkg.version`）— 殼 ref 改取 manifest 的 `channels.stable` 對應 release 的 `shell.ref`。
 - `src/commands/plugin.ts:85-86`（`shellRef`、`clientRef` 取 `pkg.version`）— 改取 manifest 的 `shell.ref` 與 `client.spec`。
-- `src/commands/plugin.ts:39-48`（`type PackageManager`、lockfile 偵測）— 加入 bun，並與 `src/web.ts:68-72` 的偵測合併成一處。
+- `src/commands/plugin.ts:39-48`（`type PackageManager`、lockfile 偵測）— 加入 bun，改用 `src/web.ts` 匯出的共用偵測（不新增原始碼檔）。
+- `src/commands/upgrade.ts:65-72`（`installCommand` 內第三份 lockfile 偵測）— 同樣改用共用偵測，並補 bun 的 `bun install`。
 - `src/commands/doctor.ts:46-52`（`expectedProfile`，以範本推導 Flutter 基準、`shellRef: pkg.version`）— 改取 manifest 的 `flutter.baseline`、`dart`；lock 落後的檢查改比對 `resolved-ref` 與 manifest 的 sha。
 - `src/commands/upgrade.ts`（`planUpgrade`，以 CLI 版本為目標）— 目標改為 manifest 的 `channels.stable`（或 `--to=<版本>`），並加入舊語法改寫。
 - `src/versioning.ts:209`（`NPM_SPEC`）、`src/versioning.ts:235`（`rewritePackageJson` 的 pattern）— 同時認 `github:Aqutter/aqutter-cli#…`，並能把 `github:Aqutter/aqutter#…&path:/cli` 改寫為新語法。
 - `src/main.ts:2-4`（`HELP` 與 `pkg.version`）— 說明文字補 `--offline` 與 `AQUTTER_MANIFEST_URL`。
-- `src/web.ts:68-72`（`pnpm exec` / `yarn` 的 runner 偵測）— 加入 bun（`bunx`）。
+- `src/web.ts:67-75`（`execPrefix`，`pnpm exec` / `yarn` / `npx` 的 runner 偵測）— 抽出並匯出 `detectPackageManager`（pnpm、yarn、bun、npm），加入 bun（`bunx`）。
 - `scripts/build.mjs:2`（註解寫著 `pnpm add -D github:Aqutter/aqutter#path:/cli`）— 改為新安裝語法，並確保內建快照進入 `dist/`。
 - `package.json:2`（`@aqutter/aqutter-cli`）— 補 `repository`、`bugs`、`homepage` 指向本 repo；名稱不變。
 - `test/plugins.test.ts:80`（範本測試）— 隨範本搬入，維持不變。
@@ -150,6 +151,8 @@ CLI 內建預設的 manifest 網址，可被環境變數 `AQUTTER_MANIFEST_URL` 
 - `src/manifest.ts` (new) — manifest 取得層，Contract §4。
 - `src/manifestSnapshot.json` (new) — 內建的最後已知 manifest。
 - `scripts/syncManifest.mjs` (new) — 把 `Aqutter/aqutter` 的 `manifest/releases.json` 同步成內建快照（不手改快照）；`package.json` 的 `scripts` 補對應指令。
+- `test/packageManager.test.ts` (new) — 偵測順序（pnpm > yarn > bun > npm）、各管理器的 exec 前綴與安裝指令。
+- `test/versioning.test.ts`（既有）— 補新依賴語法與舊語法改寫的案例。
 - `test/manifest.test.ts` (new) — 取得、快取、離線、schema 過新、格式錯誤、允許清單的測試（注入網路層）。
 - `.github/workflows/ci.yml` (new) — 型別檢查、測試、`dist/` 同步、範本與 manifest 的 Flutter 基準一致。
 
@@ -180,6 +183,7 @@ CLI 內建預設的 manifest 網址，可被環境變數 `AQUTTER_MANIFEST_URL` 
 - **[完成後]** commit + 開 PR（PR 併回 `release/0.0.0`，合併選 Create a merge commit）— 使用者於核准閘選擇；任務完成前會 `git rebase origin/release/0.0.0` 與 `git push --force-with-lease --force-if-includes`，匯入的不相關歷史若會被壓平則先停下請示。
 - **[Rule 24]** Version Snapshot：本 repo 尚無版本檔，無可比對對象，不做版本檔同步；匯入後 `package.json` 的 `version` 為 `0.0.0`，與 milestone 一致。
 - **[設計]** manifest 取得層與內建快照放在 CLI 內，而不是每次連網 — 理由：`dev`、`build`、`seed` 不查 manifest（Contract §4），離線仍要能 `init`／`doctor`。
+- **[執行中]** 發現第三份偵測（`upgrade.ts:65-72`），且共用偵測放進計畫已列的 `src/web.ts` 而非新增原始碼檔；補列 `test/packageManager.test.ts`（new）與 `test/versioning.test.ts`（既有）兩個測試檔，已請使用者重新核准（Rule 18／2）。
 - **[設計]** 套件管理器偵測集中一處並加入 bun — 理由：使用者要求 npm、pnpm、bun、yarn 都能好好使用；目前兩處各寫一份且都沒有 bun。
 - **[設計]** 契約區塊由 `Aqutter/aqutter` 的同名計畫逐字複製，修改只走 Rule 29 — 理由：Rule 28。
 

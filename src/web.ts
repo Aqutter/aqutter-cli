@@ -63,16 +63,43 @@ export const parseEnvFile = (path: string): Record<string, string> => {
   return result
 }
 
-/** 依 lockfile 判斷套件管理器，回傳「執行本機 bin」的前綴。 */
-export const execPrefix = (project: Project): Invocation => {
-  if (existsSync(join(project.root, 'pnpm-lock.yaml'))) {
-    return { command: 'pnpm', args: ['exec'] }
+export type PackageManager = 'pnpm' | 'yarn' | 'bun' | 'npm'
+
+/**
+ * 依專案根目錄的 lockfile 判斷套件管理器；同時有多種 lockfile 時依 pnpm、yarn、bun 的順序取先，
+ * 都沒有（含只有 package-lock.json）就是 npm。
+ */
+export const detectPackageManager = (root: string): PackageManager => {
+  if (existsSync(join(root, 'pnpm-lock.yaml'))) {
+    return 'pnpm'
   }
-  if (existsSync(join(project.root, 'yarn.lock'))) {
-    return { command: 'yarn', args: [] }
+  if (existsSync(join(root, 'yarn.lock'))) {
+    return 'yarn'
   }
-  return { command: 'npx', args: ['--no-install'] }
+  if (existsSync(join(root, 'bun.lock')) || existsSync(join(root, 'bun.lockb'))) {
+    return 'bun'
+  }
+  return 'npm'
 }
+
+const EXEC_PREFIX: Record<PackageManager, Invocation> = {
+  pnpm: { command: 'pnpm', args: ['exec'] },
+  yarn: { command: 'yarn', args: [] },
+  bun: { command: 'bunx', args: [] },
+  npm: { command: 'npx', args: ['--no-install'] },
+}
+
+/** 該套件管理器「執行本機 bin」的前綴。 */
+export const execPrefixOf = (manager: PackageManager): Invocation => EXEC_PREFIX[manager]
+
+/** 依 lockfile 判斷套件管理器，回傳「執行本機 bin」的前綴。 */
+export const execPrefix = (project: Project): Invocation => execPrefixOf(detectPackageManager(project.root))
+
+/** 重新安裝專案相依的指令。 */
+export const installCommandOf = (manager: PackageManager): string => `${manager} install`
+
+/** 把套件安裝進專案的參數（不含管理器本身）：npm 用 install，其餘用 add。 */
+export const addArgs = (manager: PackageManager, source: string): string[] => (manager === 'npm' ? ['install', source] : ['add', source])
 
 const withExec = (project: Project, bin: string, args: string[], env?: NodeJS.ProcessEnv): Invocation => {
   const prefix = execPrefix(project)

@@ -13,7 +13,7 @@
 - [x] [aqutter-cli] 在臨時專案以本機 git 網址（指向工作分支）安裝並執行 `aqutter --version`：npm ✅、pnpm ✅；yarn 1.22 在本機 `git+file` 網址回報 `Couldn't find the binary git`（原因未查明），改於 Phase 5 以推送後的 GitHub 網址驗證；bun 見 Manual Follow-ups
 
 ## Phase 3 — 套件管理器偵測
-- [ ] [aqutter-cli] 把 `src/web.ts:68-72` 與 `src/commands/plugin.ts:39-48` 的偵測合併成一處，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試
+- [x] [aqutter-cli] 把 `src/web.ts:68-72`、`src/commands/plugin.ts:39-48` 與 `src/commands/upgrade.ts:65-72` 的偵測合併成 `src/web.ts` 的 `detectPackageManager`，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試，認 pnpm、yarn、bun（`bun.lock`／`bun.lockb`）、npm，並補測試
 
 ## Phase 4 — manifest 取得層與指令
 - [ ] [aqutter-cli] 實作 `src/manifest.ts`（new）與 `test/manifest.test.ts`（new）：取得、24 小時快取、逾時、`--offline`、`schema` 過新、格式錯誤、主機允許清單、退回內建快照（Contract §4）

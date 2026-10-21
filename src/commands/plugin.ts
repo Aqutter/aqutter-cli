@@ -19,6 +19,8 @@ import { IS_WIN, parseArgs } from '../shared.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
 import { PLUGIN_ID_PATTERN, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
+import { addArgs, detectPackageManager } from '../web.ts'
+import type { PackageManager } from '../web.ts'
 import { usePathDependency } from './init.ts'
 
 const TAG = 'plugin'
@@ -35,18 +37,6 @@ export const toClassName = (id: string): string => id.split('-').map(capitalize)
 
 /** `native-view` → `native_view`。 */
 export const toSnake = (id: string): string => id.replace(/-/g, '_')
-
-type PackageManager = 'pnpm' | 'yarn' | 'npm'
-
-const detectPackageManager = (root: string): PackageManager => {
-  if (existsSync(join(root, 'pnpm-lock.yaml'))) {
-    return 'pnpm'
-  }
-  if (existsSync(join(root, 'yarn.lock'))) {
-    return 'yarn'
-  }
-  return 'npm'
-}
 
 const runPm = (pm: PackageManager, args: string[], cwd: string): void => {
   console.log(`[${TAG}] ${pm} ${args.join(' ')}`)
@@ -109,7 +99,7 @@ const add = (cwd: string, argv: string[]): void => {
   const before = readDependencyNames(project.root)
 
   if (!argv.includes('--no-install')) {
-    runPm(pm, pm === 'npm' ? ['install', source] : ['add', source], project.root)
+    runPm(pm, addArgs(pm, source), project.root)
   }
 
   const after = readDependencyNames(project.root)
