@@ -18,11 +18,13 @@
 ## Phase 4 — manifest 取得層與指令
 - [x] [aqutter-cli] 實作 `src/manifest.ts`（new）與 `test/manifest.test.ts`（new）：取得、24 小時快取、逾時、`--offline`、`schema` 過新、格式錯誤、主機允許清單、退回內建快照（Contract §4）
 - [x] [aqutter-cli] 建立 `src/manifestSnapshot.json`（new）與同步腳本 `scripts/syncManifest.mjs`（new）；`scripts/build.mjs:2` 確保快照打包進 `dist/`
-- [ ] [aqutter-cli] 改 `src/commands/init.ts:112`、`src/commands/plugin.ts:85-86` 取 manifest 的 `shell.ref`、`client.spec`
-- [ ] [aqutter-cli] 改 `src/commands/doctor.ts:46-52` 取 `flutter.baseline`、`dart`，lock 比對改用 sha
-- [ ] [aqutter-cli] 改 `src/commands/upgrade.ts`、`src/versioning.ts:209`、`:235`：目標取 manifest、舊依賴語法改寫為新語法，並補測試
-- [ ] [aqutter-cli] 更新 `src/main.ts:2-4` 的說明文字（`--offline`、`AQUTTER_MANIFEST_URL`）
+- [x] [aqutter-cli] 改 `src/commands/init.ts:112`、`src/commands/plugin.ts:85-86` 取 manifest 的 `shell.ref`、`client.spec`
+- [x] [aqutter-cli] 改 `src/commands/doctor.ts:46-52` 取 `flutter.baseline`、`dart`，lock 比對改用 sha
+- [x] [aqutter-cli] 改 `src/commands/upgrade.ts`、`src/versioning.ts:209`、`:235`：目標取 manifest、舊依賴語法改寫為新語法，並補測試
+- [x] [aqutter-cli] 更新 `src/main.ts:2-4` 的說明文字（`--offline`、`AQUTTER_MANIFEST_URL`）
 - [ ] [aqutter-cli] 端到端驗證：以 raw 網址取得 manifest，對真實專案跑 `doctor`、`upgrade --dry-run`　需等待 [aqutter]：manifest 合併到 `main`
+  - 已完成（用內建快照）：對 `aqutter-nuxt-app` 跑 `doctor --offline` 與 `upgrade --dry-run --offline`，找出 3 項該遷移的依賴（殼 ref、client、CLI 舊語法），lock 與 manifest 的 sha 一致，dry-run 不改檔。
+  - 待完成：改用 raw 網址（`AQUTTER_MANIFEST_URL` 或預設網址）實際下載
 
 ## Phase 5 — CI、wiki 與驗證
 - [ ] [aqutter-cli] 建立 `.github/workflows/ci.yml`（new）：型別檢查、測試、`dist/` 與原始碼同步、範本的 Flutter 約束與 manifest 的 `flutter.baseline` 一致

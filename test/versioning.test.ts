@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { diagnose } from '../src/commands/doctor.ts'
-import type { Facts } from '../src/commands/doctor.ts'
+import type { ExpectedProfile, Facts } from '../src/commands/doctor.ts'
 import { planUpgrade } from '../src/commands/upgrade.ts'
 import {
+  classifyCliSpec,
+  cliInstallSpec,
+  isClientGithubSpec,
   lowerBound,
   parseFvmrc,
   parseLock,
@@ -15,11 +18,18 @@ import {
   satisfies,
 } from '../src/versioning.ts'
 
-const EXPECTED = {
+const SHELL_SHA = 'a'.repeat(40)
+const CORE_SHA = 'b'.repeat(40)
+
+const EXPECTED: ExpectedProfile = {
+  version: '0.1.0',
   sdk: '>=3.13.0 <4.0.0',
   flutter: '>=3.47.4',
   flutterVersion: '3.47.4',
-  shellRef: '0.1.0',
+  shellRef: SHELL_SHA,
+  coreRef: CORE_SHA,
+  clientSpec: `github:Aqutter/aqutter#${SHELL_SHA}&path:/client`,
+  cliMin: '0.0.0',
 }
 
 // 舊專案：只有下限、ref 是舊版、有註解與 plugins 區塊
@@ -81,12 +91,12 @@ describe('rewritePubspec', () => {
     const { text, changes } = rewritePubspec(OLD_PUBSPEC, target)
     expect(changes).toEqual([
       'environment.flutter: >=3.47.0 → >=3.47.4',
-      'aqutter ref: 0.0.0 → 0.1.0',
+      `aqutter ref: 0.0.0 → ${SHELL_SHA}`,
     ])
     expect(text).toBe(
       OLD_PUBSPEC
         .replace('flutter: \'>=3.47.0\'', 'flutter: \'>=3.47.4\'')
-        .replace('ref: 0.0.0', 'ref: 0.1.0'),
+        .replace('ref: 0.0.0', `ref: ${SHELL_SHA}`),
     )
   })
 
@@ -138,34 +148,64 @@ describe('.fvmrc', () => {
 })
 
 describe('package.json', () => {
+  const LEGACY = 'github:Aqutter/aqutter#0.0.0&path:/cli'
+  const CURRENT = 'github:Aqutter/aqutter-cli#0.0.0'
+  const OLD_CLIENT = 'github:Aqutter/aqutter#0.0.0&path:/client'
   const PACKAGE = `{
   "dependencies": {
-    "@aqutter/aqutter": "github:Aqutter/aqutter#0.0.0&path:/client",
+    "@aqutter/aqutter": "${OLD_CLIENT}",
     "nuxt": "4.6.1"
   },
   "devDependencies": {
-    "@aqutter/aqutter-cli": "github:Aqutter/aqutter#0.0.0&path:/cli"
+    "@aqutter/aqutter-cli": "${LEGACY}"
   }
 }
 `
+  const target = { clientSpec: EXPECTED.clientSpec, cliSpec: CURRENT }
 
-  it('reads the Aqutter github specs', () => {
+  it('classifies the CLI dependency spec', () => {
+    expect(classifyCliSpec(LEGACY)).toBe('legacy')
+    expect(classifyCliSpec(CURRENT)).toBe('current')
+    expect(classifyCliSpec('github:Aqutter/aqutter-cli')).toBe('current')
+    expect(classifyCliSpec('^1.2.3')).toBe('other')
+    expect(classifyCliSpec('github:Aqutter/aqutter#0.0.0&path:/client')).toBe('other')
+  })
+
+  it('recognises a github client spec and builds the current CLI spec', () => {
+    expect(isClientGithubSpec(OLD_CLIENT)).toBe(true)
+    expect(isClientGithubSpec('^1.0.0')).toBe(false)
+    expect(cliInstallSpec('0.2.0')).toBe('github:Aqutter/aqutter-cli#0.2.0')
+  })
+
+  it('reads the specs of both packages in any form', () => {
     expect(readNpmSpecs(PACKAGE)).toEqual([
-      { name: '@aqutter/aqutter', ref: '0.0.0' },
-      { name: '@aqutter/aqutter-cli', ref: '0.0.0' },
+      { name: '@aqutter/aqutter', spec: OLD_CLIENT },
+      { name: '@aqutter/aqutter-cli', spec: LEGACY },
     ])
-  })
-
-  it('rewrites only the ref and keeps formatting', () => {
-    const { text, changes } = rewritePackageJson(PACKAGE, '0.1.0')
-    expect(changes).toEqual(['@aqutter/aqutter: 0.0.0 → 0.1.0', '@aqutter/aqutter-cli: 0.0.0 → 0.1.0'])
-    expect(text).toBe(PACKAGE.replace(/#0\.0\.0&/g, '#0.1.0&'))
-    expect(rewritePackageJson(text, '0.1.0').changes).toEqual([])
-  })
-
-  it('ignores dependencies that are not Aqutter github specs', () => {
-    expect(readNpmSpecs('{"dependencies":{"@aqutter/aqutter":"^1.0.0"}}')).toEqual([])
+    expect(readNpmSpecs('{"dependencies":{"@aqutter/aqutter":"^1.0.0"}}')).toEqual([{ name: '@aqutter/aqutter', spec: '^1.0.0' }])
     expect(readNpmSpecs('not json')).toEqual([])
+  })
+
+  it('moves the client to the manifest spec and the legacy CLI spec to the new repo, keeping formatting', () => {
+    const { text, changes } = rewritePackageJson(PACKAGE, target)
+    expect(changes).toEqual([
+      `@aqutter/aqutter: ${OLD_CLIENT} → ${EXPECTED.clientSpec}`,
+      `@aqutter/aqutter-cli: ${LEGACY} → ${CURRENT}`,
+    ])
+    expect(text).toBe(PACKAGE.replace(OLD_CLIENT, EXPECTED.clientSpec).replace(LEGACY, CURRENT))
+    expect(rewritePackageJson(text, target).changes).toEqual([])
+  })
+
+  it('leaves a CLI dependency alone when it already uses the new syntax or a registry version', () => {
+    const current = PACKAGE.replace(`"${LEGACY}"`, '"github:Aqutter/aqutter-cli#feature-x"')
+    expect(rewritePackageJson(current, target).text).toContain('github:Aqutter/aqutter-cli#feature-x')
+    const registry = PACKAGE.replace(`"${LEGACY}"`, '"^1.0.0"')
+    expect(rewritePackageJson(registry, target).text).toContain('"@aqutter/aqutter-cli": "^1.0.0"')
+  })
+
+  it('leaves a client that is not a github spec alone', () => {
+    const registry = PACKAGE.replace(OLD_CLIENT, '^1.0.0')
+    expect(rewritePackageJson(registry, target).text).toContain('"@aqutter/aqutter": "^1.0.0"')
   })
 })
 
@@ -230,14 +270,18 @@ const upToDatePubspec = rewritePubspec(OLD_PUBSPEC, { sdk: EXPECTED.sdk, flutter
 
 const goodFacts = (): Facts => ({
   expected: EXPECTED,
+  cliVersion: '0.1.0',
   installedFlutter: '3.47.4',
   pubspec: parsePubspec(upToDatePubspec),
   fvmrc: null,
-  npmSpecs: [{ name: '@aqutter/aqutter', ref: '0.1.0' }],
+  npmSpecs: [
+    { name: '@aqutter/aqutter', spec: EXPECTED.clientSpec },
+    { name: '@aqutter/aqutter-cli', spec: 'github:Aqutter/aqutter-cli#0.0.0' },
+  ],
   lock: {
-    aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: '0.1.0', resolvedRef: 'a'.repeat(40) },
+    aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: SHELL_SHA, resolvedRef: SHELL_SHA },
+    aqutter_core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: CORE_SHA, resolvedRef: CORE_SHA },
   },
-  remote: { 'https://github.com/Aqutter/aqutter.git#0.1.0': 'a'.repeat(40) },
 })
 
 const levels = (facts: Facts): string[] => diagnose(facts).filter(f => f.level !== 'ok').map(f => `${f.level}:${f.title}`)
@@ -260,14 +304,32 @@ describe('diagnose', () => {
     }
   })
 
-  it('warns about an old pubspec, a stale ref and old npm refs', () => {
+  it('warns about an old pubspec, a stale shell ref and a legacy CLI dependency', () => {
     const found = levels({
       ...goodFacts(),
       pubspec: parsePubspec(OLD_PUBSPEC),
-      npmSpecs: [{ name: '@aqutter/aqutter', ref: '0.0.0' }],
+      npmSpecs: [{ name: '@aqutter/aqutter-cli', spec: 'github:Aqutter/aqutter#0.0.0&path:/cli' }],
     })
     expect(found).toHaveLength(3)
     expect(found.every(line => line.startsWith('warn:'))).toBe(true)
+    expect(found.some(line => line.includes('舊的子目錄安裝語法'))).toBe(true)
+  })
+
+  it('warns when the client dependency differs from the framework version', () => {
+    const found = levels({ ...goodFacts(), npmSpecs: [{ name: '@aqutter/aqutter', spec: 'github:Aqutter/aqutter#0.0.0&path:/client' }] })
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatch(/^warn:@aqutter\/aqutter 與框架版本 0\.1\.0 不一致/)
+  })
+
+  it('does not judge a client or CLI installed from the registry', () => {
+    const npmSpecs = [{ name: '@aqutter/aqutter', spec: '^1.0.0' }, { name: '@aqutter/aqutter-cli', spec: '^1.0.0' }] as Facts['npmSpecs']
+    expect(levels({ ...goodFacts(), npmSpecs })).toEqual([])
+  })
+
+  it('errors when the CLI is older than the release requires', () => {
+    const found = levels({ ...goodFacts(), expected: { ...EXPECTED, cliMin: '0.5.0' } })
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatch(/^error:aqutter-cli 0\.1\.0 太舊/)
   })
 
   it('never asks for a .fvmrc: a project without one is fine', () => {
@@ -281,18 +343,24 @@ describe('diagnose', () => {
     expect(levels({ ...goodFacts(), fvmrc: { version: null } })[0]).toMatch(/^warn:\.fvmrc 不是合法/)
   })
 
-  it('warns when the lock is behind the remote ref', () => {
+  it('warns when a lock entry differs from the commit the release records', () => {
     const facts = goodFacts()
-    facts.remote = { 'https://github.com/Aqutter/aqutter.git#0.1.0': 'b'.repeat(40) }
+    facts.lock = {
+      aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: '0.0.0', resolvedRef: 'c'.repeat(40) },
+      aqutter_core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: '0.0.0', resolvedRef: CORE_SHA },
+    }
     const found = levels(facts)
     expect(found).toHaveLength(1)
-    expect(found[0]).toMatch(/lock 落後/)
+    expect(found[0]).toMatch(/^warn:aqutter 的 lock 與框架版本 0\.1\.0 不一致/)
   })
 
-  it('does not query the remote when offline', () => {
+  it('checks aqutter_core against the core commit', () => {
     const facts = goodFacts()
-    facts.remote = undefined
-    expect(levels(facts)).toEqual([])
+    facts.lock = {
+      aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: SHELL_SHA, resolvedRef: SHELL_SHA },
+      aqutter_core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: '0.0.0', resolvedRef: 'd'.repeat(40) },
+    }
+    expect(levels(facts)[0]).toMatch(/^warn:aqutter_core 的 lock/)
   })
 
   it('skips the ref check for a path dependency', () => {
@@ -308,7 +376,7 @@ describe('planUpgrade', () => {
     const plan = planUpgrade({ pubspec: OLD_PUBSPEC, fvmrc: null, packageJson: PACKAGE, keepShellRef: false }, EXPECTED)
     expect(plan.pubspec.changes).toHaveLength(2)
     expect(plan.fvmrc).toBeNull()
-    expect(plan.packageJson?.changes).toEqual(['@aqutter/aqutter-cli: 0.0.0 → 0.1.0'])
+    expect(plan.packageJson?.changes).toEqual(['@aqutter/aqutter-cli: github:Aqutter/aqutter#0.0.0&path:/cli → github:Aqutter/aqutter-cli#0.0.0'])
     expect(plan.needsPubUpgrade).toBe(true)
   })
 

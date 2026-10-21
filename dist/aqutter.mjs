@@ -243,11 +243,11 @@ var init_shared = __esm({
           flags[long[1]] = long[2];
           continue;
         }
-        const short = /^-([A-Za-z])(?:=(.*))?$/.exec(arg);
-        if (short && SHORT_FLAGS[short[1]] !== void 0) {
-          const name = SHORT_FLAGS[short[1]];
-          if (short[2] !== void 0) {
-            flags[name] = short[2];
+        const short2 = /^-([A-Za-z])(?:=(.*))?$/.exec(arg);
+        if (short2 && SHORT_FLAGS[short2[1]] !== void 0) {
+          const name = SHORT_FLAGS[short2[1]];
+          if (short2[2] !== void 0) {
+            flags[name] = short2[2];
           } else {
             const next = argv[index + 1];
             if (next !== void 0 && !next.startsWith("-")) {
@@ -451,9 +451,830 @@ var init_shared = __esm({
   }
 });
 
+// src/manifestSnapshot.json
+var manifestSnapshot_default;
+var init_manifestSnapshot = __esm({
+  "src/manifestSnapshot.json"() {
+    manifestSnapshot_default = {
+      schema: 1,
+      generatedAt: "2026-10-21T04:00:00Z",
+      channels: {
+        stable: "0.0.0"
+      },
+      releases: {
+        "0.0.0": {
+          status: "supported",
+          flutter: {
+            baseline: "3.47.4"
+          },
+          dart: ">=3.13.0 <4.0.0",
+          shell: {
+            url: "https://github.com/Aqutter/aqutter.git",
+            path: "shell",
+            ref: "48d58e205967680f1ab1fffab02520014854ae4b"
+          },
+          core: {
+            url: "https://github.com/Aqutter/aqutter_core.git",
+            ref: "72f7b067f691d5cb937eb7101f1161bd54676454"
+          },
+          client: {
+            spec: "github:Aqutter/aqutter#48d58e205967680f1ab1fffab02520014854ae4b&path:/client"
+          },
+          cli: {
+            min: "0.0.0"
+          }
+        }
+      }
+    };
+  }
+});
+
+// src/manifest.ts
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, statSync as statSync2, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as join3 } from "node:path";
+var DEFAULT_MANIFEST_URL, MANIFEST_URL_ENV, SUPPORTED_SCHEMA, DEFAULT_TTL_MS, DEFAULT_TIMEOUT_MS, MAX_BYTES, ManifestError, ManifestTooNewError, VERSION, SHA, GITHUB_GIT_URL, DART_CONSTRAINT, STATUSES, isRecord2, triple, compareVersions, parseManifest, parseText, loadManifest, resolveRelease, assertCliSupports, defaultCacheDir, createFileIo, manifestUrl, loadConfiguredManifest;
+var init_manifest = __esm({
+  "src/manifest.ts"() {
+    "use strict";
+    init_manifestSnapshot();
+    DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/Aqutter/aqutter/main/manifest/releases.json";
+    MANIFEST_URL_ENV = "AQUTTER_MANIFEST_URL";
+    SUPPORTED_SCHEMA = 1;
+    DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
+    DEFAULT_TIMEOUT_MS = 15e3;
+    MAX_BYTES = 1024 * 1024;
+    ManifestError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "ManifestError";
+      }
+    };
+    ManifestTooNewError = class extends Error {
+      constructor(schema) {
+        super(`release manifest \u7684\u683C\u5F0F\u7248\u672C\u662F ${schema}\uFF0C\u9019\u652F aqutter-cli \u53EA\u652F\u63F4\u5230 ${SUPPORTED_SCHEMA}\u3002\u8ACB\u5347\u7D1A aqutter-cli\u3002`);
+        this.name = "ManifestTooNewError";
+      }
+    };
+    VERSION = /^\d+\.\d+\.\d+$/;
+    SHA = /^[0-9a-f]{40}$/;
+    GITHUB_GIT_URL = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/;
+    DART_CONSTRAINT = /^(>=|<=|>|<)?\d+\.\d+\.\d+( (>=|<=|>|<)\d+\.\d+\.\d+)*$/;
+    STATUSES = ["supported", "deprecated", "yanked"];
+    isRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    triple = (version) => {
+      const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+      return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+    };
+    compareVersions = (a, b) => {
+      const left = triple(a);
+      const right = triple(b);
+      if (!left || !right) {
+        return Number.NaN;
+      }
+      for (let i = 0; i < 3; i += 1) {
+        if (left[i] !== right[i]) {
+          return left[i] - right[i];
+        }
+      }
+      return 0;
+    };
+    parseManifest = (raw) => {
+      if (!isRecord2(raw)) {
+        throw new ManifestError("manifest \u5FC5\u9808\u662F JSON \u7269\u4EF6");
+      }
+      if (typeof raw.schema !== "number" || !Number.isInteger(raw.schema) || raw.schema < 1) {
+        throw new ManifestError("schema \u5FC5\u9808\u662F\u6B63\u6574\u6578");
+      }
+      if (raw.schema > SUPPORTED_SCHEMA) {
+        throw new ManifestTooNewError(raw.schema);
+      }
+      const problems = [];
+      const text = (value, pattern, where) => {
+        if (typeof value !== "string" || !pattern.test(value)) {
+          problems.push(`${where} \u683C\u5F0F\u4E0D\u7B26`);
+          return "";
+        }
+        return value;
+      };
+      if (typeof raw.generatedAt !== "string") {
+        problems.push("generatedAt \u5FC5\u9808\u662F\u5B57\u4E32");
+      }
+      const channels = {};
+      if (!isRecord2(raw.channels)) {
+        problems.push("channels \u5FC5\u9808\u662F\u7269\u4EF6");
+      } else {
+        for (const [name, version] of Object.entries(raw.channels)) {
+          channels[name] = text(version, VERSION, `channels.${name}`);
+        }
+        if (channels.stable === void 0) {
+          problems.push("channels \u5FC5\u9808\u542B stable");
+        }
+      }
+      const releases = {};
+      if (!isRecord2(raw.releases) || Object.keys(raw.releases).length === 0) {
+        problems.push("releases \u5FC5\u9808\u662F\u81F3\u5C11\u4E00\u7B46\u7684\u7269\u4EF6");
+      } else {
+        for (const [version, entry] of Object.entries(raw.releases)) {
+          const where = `releases.${version}`;
+          if (!VERSION.test(version)) {
+            problems.push(`${where} \u7684\u9375\u4E0D\u662F X.Y.Z`);
+            continue;
+          }
+          if (!isRecord2(entry)) {
+            problems.push(`${where} \u5FC5\u9808\u662F\u7269\u4EF6`);
+            continue;
+          }
+          const flutter = isRecord2(entry.flutter) ? entry.flutter : {};
+          const shell = isRecord2(entry.shell) ? entry.shell : {};
+          const core = isRecord2(entry.core) ? entry.core : {};
+          const client = isRecord2(entry.client) ? entry.client : {};
+          const cli = isRecord2(entry.cli) ? entry.cli : {};
+          if (!STATUSES.includes(entry.status)) {
+            problems.push(`${where}.status \u5FC5\u9808\u662F ${STATUSES.join("\uFF0F")}`);
+          }
+          if (entry.notes !== void 0 && (typeof entry.notes !== "string" || !/^https:\/\/.+/.test(entry.notes))) {
+            problems.push(`${where}.notes \u5FC5\u9808\u662F https \u7DB2\u5740\uFF08\u6C92\u6709\u5C31\u7701\u7565\u8A72\u9375\uFF09`);
+          }
+          if (typeof client.spec !== "string" || client.spec === "") {
+            problems.push(`${where}.client.spec \u5FC5\u9808\u662F\u975E\u7A7A\u5B57\u4E32`);
+          }
+          if (shell.path !== "shell") {
+            problems.push(`${where}.shell.path \u5FC5\u9808\u662F shell`);
+          }
+          releases[version] = {
+            status: entry.status,
+            flutter: { baseline: text(flutter.baseline, VERSION, `${where}.flutter.baseline`) },
+            dart: text(entry.dart, DART_CONSTRAINT, `${where}.dart`),
+            shell: {
+              url: text(shell.url, GITHUB_GIT_URL, `${where}.shell.url`),
+              path: "shell",
+              ref: text(shell.ref, SHA, `${where}.shell.ref`)
+            },
+            core: {
+              url: text(core.url, GITHUB_GIT_URL, `${where}.core.url`),
+              ref: text(core.ref, SHA, `${where}.core.ref`)
+            },
+            client: { spec: typeof client.spec === "string" ? client.spec : "" },
+            cli: { min: text(cli.min, VERSION, `${where}.cli.min`) },
+            ...typeof entry.notes === "string" ? { notes: entry.notes } : {}
+          };
+        }
+      }
+      for (const [name, version] of Object.entries(channels)) {
+        if (version !== "" && releases[version] === void 0) {
+          problems.push(`channels.${name} \u6307\u5411\u4E0D\u5B58\u5728\u7684 release ${version}`);
+        }
+      }
+      if (channels.stable && releases[channels.stable] && releases[channels.stable].status !== "supported") {
+        problems.push("channels.stable \u5FC5\u9808\u6307\u5411 status \u70BA supported \u7684 release");
+      }
+      if (problems.length > 0) {
+        throw new ManifestError(problems.join("\uFF1B"));
+      }
+      return {
+        schema: raw.schema,
+        generatedAt: raw.generatedAt,
+        channels,
+        releases
+      };
+    };
+    parseText = (text) => {
+      let raw;
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        throw new ManifestError("manifest \u4E0D\u662F\u5408\u6CD5\u7684 JSON");
+      }
+      return parseManifest(raw);
+    };
+    loadManifest = async (options) => {
+      const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+      const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const warnings = [];
+      const cached = () => {
+        const entry = options.io.readCache();
+        if (!entry) {
+          return null;
+        }
+        try {
+          return { manifest: parseText(entry.text), mtimeMs: entry.mtimeMs };
+        } catch (error) {
+          if (error instanceof ManifestTooNewError) {
+            throw error;
+          }
+          return null;
+        }
+      };
+      const fromSnapshot = (reason) => {
+        try {
+          const manifest = parseManifest(options.snapshot);
+          return { manifest, source: "snapshot", warnings: [...warnings, `${reason}\uFF0C\u6539\u7528\u5167\u5EFA\u7684 release manifest \u5FEB\u7167\uFF08\u53EF\u80FD\u4E0D\u662F\u6700\u65B0\uFF09\u3002`] };
+        } catch (error) {
+          if (error instanceof ManifestTooNewError) {
+            throw error;
+          }
+          throw new ManifestError(`${reason}\uFF0C\u800C\u4E14\u5167\u5EFA\u5FEB\u7167\u4E5F\u4E0D\u53EF\u7528\uFF1A${error.message}`);
+        }
+      };
+      const cache = cached();
+      if (options.offline) {
+        if (cache) {
+          return { manifest: cache.manifest, source: "cache", warnings };
+        }
+        return fromSnapshot("\u96E2\u7DDA\u4E14\u6C92\u6709\u5FEB\u53D6");
+      }
+      if (cache && options.io.now() - cache.mtimeMs < ttlMs) {
+        return { manifest: cache.manifest, source: "cache", warnings };
+      }
+      let failure;
+      try {
+        const text = await options.io.fetchText(options.url, timeoutMs);
+        const manifest = parseText(text);
+        options.io.writeCache(text);
+        return { manifest, source: "network", warnings };
+      } catch (error) {
+        if (error instanceof ManifestTooNewError) {
+          throw error;
+        }
+        failure = `\u7121\u6CD5\u53D6\u5F97 release manifest\uFF08${error.message}\uFF09`;
+      }
+      if (cache) {
+        warnings.push(`${failure}\uFF0C\u6539\u7528\u904E\u671F\u7684\u672C\u6A5F\u5FEB\u53D6\u3002`);
+        return { manifest: cache.manifest, source: "stale-cache", warnings };
+      }
+      return fromSnapshot(failure);
+    };
+    resolveRelease = (manifest, requested) => {
+      const version = requested ?? manifest.channels.stable;
+      const release = manifest.releases[version];
+      if (!release) {
+        throw new ManifestError(`\u627E\u4E0D\u5230\u7248\u672C ${version}\u3002\u53EF\u7528\u7248\u672C\uFF1A${Object.keys(manifest.releases).join("\u3001")}`);
+      }
+      if (release.status === "yanked") {
+        throw new ManifestError(`\u7248\u672C ${version} \u5DF2\u64A4\u56DE\uFF08yanked\uFF09\uFF0C\u4E0D\u80FD\u4F7F\u7528\u3002${release.notes ? `\u8AAA\u660E\uFF1A${release.notes}` : ""}`.trim());
+      }
+      return { version, release };
+    };
+    assertCliSupports = (release, cliVersion) => {
+      if (compareVersions(cliVersion, release.cli.min) < 0) {
+        throw new ManifestError(`\u9019\u500B\u6846\u67B6\u7248\u672C\u9700\u8981 aqutter-cli ${release.cli.min} \u4EE5\u4E0A\uFF08\u76EE\u524D ${cliVersion}\uFF09\u3002\u8ACB\u5347\u7D1A aqutter-cli\u3002`);
+      }
+    };
+    defaultCacheDir = (env = process.env, platform = process.platform) => {
+      if (platform === "win32") {
+        return join3(env.LOCALAPPDATA ?? join3(homedir(), "AppData", "Local"), "aqutter");
+      }
+      return join3(env.XDG_CACHE_HOME ?? join3(homedir(), ".cache"), "aqutter");
+    };
+    createFileIo = (cacheDir = defaultCacheDir()) => {
+      const file = join3(cacheDir, "releases.json");
+      return {
+        now: () => Date.now(),
+        fetchText: async (url, timeoutMs) => {
+          if (!url.startsWith("https://")) {
+            throw new Error("\u53EA\u63A5\u53D7 https \u7DB2\u5740");
+          }
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await fetch(url, { signal: controller.signal, headers: { accept: "application/json" } });
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const text = await response.text();
+            if (text.length > MAX_BYTES) {
+              throw new Error("\u5167\u5BB9\u904E\u5927");
+            }
+            return text;
+          } catch (error) {
+            if (controller.signal.aborted) {
+              throw new Error(`\u903E\u6642\uFF08${timeoutMs / 1e3} \u79D2\uFF09`);
+            }
+            throw error;
+          } finally {
+            clearTimeout(timer);
+          }
+        },
+        readCache: () => {
+          try {
+            return { text: readFileSync3(file, "utf8"), mtimeMs: statSync2(file).mtimeMs };
+          } catch {
+            return null;
+          }
+        },
+        writeCache: (text) => {
+          try {
+            mkdirSync2(cacheDir, { recursive: true });
+            writeFileSync(file, text);
+          } catch {
+          }
+        }
+      };
+    };
+    manifestUrl = (env = process.env, projectConfig) => {
+      const candidates = [env[MANIFEST_URL_ENV]];
+      if (isRecord2(projectConfig) && isRecord2(projectConfig.manifest)) {
+        candidates.push(projectConfig.manifest.url);
+      }
+      const found = candidates.find((value) => typeof value === "string" && value.startsWith("https://"));
+      return found ?? DEFAULT_MANIFEST_URL;
+    };
+    loadConfiguredManifest = async (options) => {
+      const loaded = await loadManifest({
+        url: manifestUrl(process.env, options.projectConfig),
+        offline: options.offline,
+        snapshot: manifestSnapshot_default,
+        io: createFileIo()
+      });
+      for (const warning of loaded.warnings) {
+        console.warn(`[manifest] ${warning}`);
+      }
+      return loaded;
+    };
+  }
+});
+
+// src/versioning.ts
+var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, LEGACY_CLI_SPEC, CURRENT_CLI_SPEC, CLIENT_GITHUB_SPEC, classifyCliSpec, isClientGithubSpec, cliInstallSpec, readNpmSpecs, rewritePackageJson, parseLock, satisfies;
+var init_versioning = __esm({
+  "src/versioning.ts"() {
+    "use strict";
+    SHELL_PACKAGE = "aqutter";
+    LOCKED_PACKAGES = ["aqutter", "aqutter_core"];
+    NPM_PACKAGES = ["@aqutter/aqutter", "@aqutter/aqutter-cli"];
+    eolOf = (text) => text.includes("\r\n") ? "\r\n" : "\n";
+    splitLines = (text) => text.split(/\r?\n/);
+    indentOf = (line) => /^ */.exec(line)[0].length;
+    bodyRange = (lines, start) => {
+      const indent = indentOf(lines[start]);
+      let end = start + 1;
+      while (end < lines.length && (lines[end].trim() === "" || indentOf(lines[end]) > indent)) {
+        end += 1;
+      }
+      return [start + 1, end];
+    };
+    findLine = (lines, pattern, from = 0, to = lines.length) => {
+      for (let i = from; i < to; i += 1) {
+        if (pattern.test(lines[i])) {
+          return i;
+        }
+      }
+      return -1;
+    };
+    scalar = (raw) => {
+      const noComment = raw.replace(/\s+#.*$/, "").trim();
+      return noComment.replace(/^(['"])(.*)\1$/, "$2");
+    };
+    valueOf = (line) => scalar(line.slice(line.indexOf(":") + 1));
+    parsePubspec = (text) => {
+      const lines = splitLines(text);
+      const info = { sdk: null, flutter: null, shell: null };
+      const env = findLine(lines, /^environment:\s*$/);
+      if (env !== -1) {
+        const [from, to] = bodyRange(lines, env);
+        const sdk = findLine(lines, /^ {2}sdk:/, from, to);
+        const flutter = findLine(lines, /^ {2}flutter:/, from, to);
+        info.sdk = sdk === -1 ? null : valueOf(lines[sdk]);
+        info.flutter = flutter === -1 ? null : valueOf(lines[flutter]);
+      }
+      const deps = findLine(lines, /^dependencies:\s*$/);
+      if (deps !== -1) {
+        const [from, to] = bodyRange(lines, deps);
+        const shell = findLine(lines, new RegExp(`^ {2}${SHELL_PACKAGE}:\\s*$`), from, to);
+        if (shell !== -1) {
+          const [sFrom, sTo] = bodyRange(lines, shell);
+          const path = findLine(lines, /^ {4}path:/, sFrom, sTo);
+          const git = findLine(lines, /^ {4}git:\s*$/, sFrom, sTo);
+          if (path !== -1) {
+            info.shell = { kind: "path", ref: null, url: null, path: valueOf(lines[path]) };
+          } else if (git !== -1) {
+            const [gFrom, gTo] = bodyRange(lines, git);
+            const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo);
+            const url = findLine(lines, /^ {6}url:/, gFrom, gTo);
+            info.shell = {
+              kind: "git",
+              ref: ref === -1 ? null : valueOf(lines[ref]),
+              url: url === -1 ? null : valueOf(lines[url]),
+              path: null
+            };
+          }
+        }
+      }
+      return info;
+    };
+    rewritePubspec = (text, target) => {
+      const eol = eolOf(text);
+      const lines = splitLines(text);
+      const changes = [];
+      const quoted = (value) => `'${value}'`;
+      const setEnv = (key, value) => {
+        const env = findLine(lines, /^environment:\s*$/);
+        if (env === -1) {
+          return;
+        }
+        const [from, to] = bodyRange(lines, env);
+        const at = findLine(lines, new RegExp(`^ {2}${key}:`), from, to);
+        const wanted = `  ${key}: ${quoted(value)}`;
+        if (at === -1) {
+          let last = to - 1;
+          while (last > from && lines[last].trim() === "") {
+            last -= 1;
+          }
+          lines.splice(last + 1, 0, wanted);
+          changes.push(`environment.${key}: \uFF08\u65B0\u589E\uFF09\u2192 ${value}`);
+          return;
+        }
+        const current = valueOf(lines[at]);
+        if (current !== value) {
+          lines[at] = wanted;
+          changes.push(`environment.${key}: ${current} \u2192 ${value}`);
+        }
+      };
+      setEnv("sdk", target.sdk);
+      setEnv("flutter", target.flutter);
+      if (target.shellRef !== null) {
+        const deps = findLine(lines, /^dependencies:\s*$/);
+        if (deps !== -1) {
+          const [from, to] = bodyRange(lines, deps);
+          const shell = findLine(lines, new RegExp(`^ {2}${SHELL_PACKAGE}:\\s*$`), from, to);
+          if (shell !== -1) {
+            const [sFrom, sTo] = bodyRange(lines, shell);
+            const git = findLine(lines, /^ {4}git:\s*$/, sFrom, sTo);
+            if (git !== -1) {
+              const [gFrom, gTo] = bodyRange(lines, git);
+              const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo);
+              if (ref !== -1) {
+                const current = valueOf(lines[ref]);
+                if (current !== target.shellRef) {
+                  lines[ref] = `      ref: ${target.shellRef}`;
+                  changes.push(`${SHELL_PACKAGE} ref: ${current} \u2192 ${target.shellRef}`);
+                }
+              }
+            }
+          }
+        }
+      }
+      return { text: lines.join(eol), changes };
+    };
+    parseFvmrc = (text) => {
+      try {
+        const value = JSON.parse(text).flutter;
+        return typeof value === "string" && value !== "" ? value : null;
+      } catch {
+        return null;
+      }
+    };
+    rewriteFvmrc = (text, version) => {
+      let data = {};
+      if (text !== null && text.trim() !== "") {
+        try {
+          const parsed = JSON.parse(text);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            return null;
+          }
+          data = parsed;
+        } catch {
+          return null;
+        }
+      }
+      if (data.flutter === version) {
+        return { text, changed: false };
+      }
+      return { text: `${JSON.stringify({ ...data, flutter: version }, null, 2)}
+`, changed: true };
+    };
+    LEGACY_CLI_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/cli$/;
+    CURRENT_CLI_SPEC = /^github:Aqutter\/aqutter-cli(#.+)?$/;
+    CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/client$/;
+    classifyCliSpec = (spec) => {
+      if (LEGACY_CLI_SPEC.test(spec)) {
+        return "legacy";
+      }
+      return CURRENT_CLI_SPEC.test(spec) ? "current" : "other";
+    };
+    isClientGithubSpec = (spec) => CLIENT_GITHUB_SPEC.test(spec);
+    cliInstallSpec = (version) => `github:Aqutter/aqutter-cli#${version}`;
+    readNpmSpecs = (text) => {
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return [];
+      }
+      const specs = [];
+      for (const group of [json.dependencies, json.devDependencies]) {
+        for (const name of NPM_PACKAGES) {
+          const spec = group?.[name];
+          if (typeof spec === "string") {
+            specs.push({ name, spec });
+          }
+        }
+      }
+      return specs;
+    };
+    rewritePackageJson = (text, target) => {
+      const changes = [];
+      const replaceValue = (name, decide) => {
+        const pattern = new RegExp(`("${name}"\\s*:\\s*")([^"]*)(")`, "g");
+        text = text.replace(pattern, (whole, head, current, tail) => {
+          const next = decide(current);
+          if (next === null || next === current) {
+            return whole;
+          }
+          changes.push(`${name}: ${current} \u2192 ${next}`);
+          return `${head}${next}${tail}`;
+        });
+      };
+      replaceValue("@aqutter/aqutter", (current) => isClientGithubSpec(current) ? target.clientSpec : null);
+      replaceValue("@aqutter/aqutter-cli", (current) => classifyCliSpec(current) === "legacy" ? target.cliSpec : null);
+      return { text, changes };
+    };
+    parseLock = (text) => {
+      const lines = splitLines(text);
+      const result = {};
+      const packages = findLine(lines, /^packages:\s*$/);
+      if (packages === -1) {
+        return result;
+      }
+      const [from, to] = bodyRange(lines, packages);
+      for (let i = from; i < to; i += 1) {
+        const header = /^ {2}([A-Za-z0-9_]+):\s*$/.exec(lines[i]);
+        if (!header) {
+          continue;
+        }
+        const [bFrom, bTo] = bodyRange(lines, i);
+        const read = (key) => {
+          const at = findLine(lines, new RegExp(`^ {6}${key}:`), bFrom, bTo);
+          return at === -1 ? null : valueOf(lines[at]);
+        };
+        const resolvedRef = read("resolved-ref");
+        const url = read("url");
+        const ref = read("ref");
+        if (resolvedRef && url && ref) {
+          result[header[1]] = { url, ref, resolvedRef };
+        }
+      }
+      return result;
+    };
+    satisfies = (version, constraint) => {
+      const parse = (value) => {
+        const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value);
+        return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+      };
+      const compare = (a, b) => {
+        for (let i = 0; i < 3; i += 1) {
+          if (a[i] !== b[i]) {
+            return a[i] - b[i];
+          }
+        }
+        return 0;
+      };
+      const v = parse(version);
+      if (!v) {
+        return null;
+      }
+      const parts = constraint.trim().split(/\s+/);
+      let ok = true;
+      for (const part of parts) {
+        const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
+        if (!match) {
+          return null;
+        }
+        const bound = parse(match[2]);
+        const cmp = compare(v, bound);
+        const op = match[1] ?? "=";
+        const pass = op === ">=" ? cmp >= 0 : op === "<=" ? cmp <= 0 : op === ">" ? cmp > 0 : op === "<" ? cmp < 0 : cmp === 0;
+        ok = ok && pass;
+      }
+      return ok;
+    };
+  }
+});
+
+// src/commands/doctor.ts
+var doctor_exports = {};
+__export(doctor_exports, {
+  detectFlutterVersion: () => detectFlutterVersion,
+  diagnose: () => diagnose,
+  expectedProfile: () => expectedProfile,
+  gatherFacts: () => gatherFacts,
+  loadExpectedProfile: () => loadExpectedProfile,
+  runDoctor: () => runDoctor
+});
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
+import { join as join4 } from "node:path";
+var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists, detectFlutterVersion, gatherFacts, LABEL, runDoctor, loadExpectedProfile;
+var init_doctor = __esm({
+  "src/commands/doctor.ts"() {
+    "use strict";
+    init_package();
+    init_manifest();
+    init_shared();
+    init_versioning();
+    TAG = "doctor";
+    expectedProfile = (version, release) => ({
+      version,
+      sdk: release.dart,
+      flutter: `>=${release.flutter.baseline}`,
+      flutterVersion: release.flutter.baseline,
+      shellRef: release.shell.ref,
+      coreRef: release.core.ref,
+      clientSpec: release.client.spec,
+      cliMin: release.cli.min
+    });
+    UPGRADE_HINT = "\u57F7\u884C `aqutter upgrade`";
+    short = (sha) => sha.slice(0, 7);
+    diagnose = (facts) => {
+      const { expected } = facts;
+      const findings = [];
+      const add2 = (finding) => {
+        findings.push(finding);
+      };
+      if (compareVersions(facts.cliVersion, expected.cliMin) < 0) {
+        add2({
+          level: "error",
+          title: `aqutter-cli ${facts.cliVersion} \u592A\u820A\uFF1A\u6846\u67B6\u7248\u672C ${expected.version} \u9700\u8981 ${expected.cliMin} \u4EE5\u4E0A`,
+          fix: "\u5347\u7D1A aqutter-cli\uFF08\u6539 package.json \u7684\u4F9D\u8CF4\u4E26\u91CD\u65B0\u5B89\u88DD\uFF09\u3002"
+        });
+      }
+      if (facts.installedFlutter === null) {
+        add2({ level: "error", title: "\u627E\u4E0D\u5230 flutter \u6307\u4EE4", fix: `\u5B89\u88DD Flutter ${expected.flutterVersion}\uFF0C\u4E26\u78BA\u8A8D flutter \u5728 PATH \u4E0A\u3002` });
+      } else {
+        const within = satisfies(facts.installedFlutter, expected.flutter);
+        if (within === false) {
+          add2({
+            level: "error",
+            title: `Flutter \u7248\u672C\u4E0D\u7B26\uFF1A\u5DF2\u5B89\u88DD ${facts.installedFlutter}\uFF0C\u6846\u67B6\u8981\u6C42 ${expected.flutter}`,
+            fix: `\u6539\u7528 Flutter ${expected.flutterVersion}\uFF08\u7528\u54EA\u7A2E\u5DE5\u5177\u5207\u63DB\u7248\u672C\u7531\u4F60\u6C7A\u5B9A\uFF0CFVM \u53EA\u662F\u9078\u9805\u4E4B\u4E00\uFF09\u3002`
+          });
+        } else if (facts.installedFlutter !== expected.flutterVersion) {
+          add2({
+            level: "warn",
+            title: `Flutter ${facts.installedFlutter} \u6BD4\u6846\u67B6\u9A57\u8B49\u904E\u7684\u7248\u672C\uFF08${expected.flutterVersion}\uFF09\u65B0`,
+            detail: "\u6846\u67B6\u5C1A\u672A\u5728\u6B64\u7248\u672C\u4E0A\u9A57\u8B49\uFF0C\u53EF\u4EE5\u5617\u8A66\uFF1B\u9047\u5230\u7DE8\u8B6F\u932F\u8AA4\u6642\uFF0C\u5148\u6539\u56DE\u57FA\u6E96\u7248\u672C\u78BA\u8A8D\u662F\u5426\u70BA\u7248\u672C\u5DEE\u7570\u9020\u6210\u3002"
+          });
+        } else {
+          add2({ level: "ok", title: `Flutter ${facts.installedFlutter}` });
+        }
+      }
+      if (facts.pubspec === null) {
+        add2({ level: "error", title: "\u627E\u4E0D\u5230 App \u7684 pubspec.yaml", fix: "\u78BA\u8A8D aqutter.config.json \u7684 appDir\uFF0C\u6216\u57F7\u884C `aqutter init`\u3002" });
+      } else {
+        const { pubspec } = facts;
+        if (pubspec.flutter === expected.flutter && pubspec.sdk === expected.sdk) {
+          add2({ level: "ok", title: `pubspec environment\uFF08flutter ${pubspec.flutter}\uFF09` });
+        } else {
+          add2({
+            level: "warn",
+            title: `pubspec environment \u8207\u6846\u67B6\u4E0D\u4E00\u81F4\uFF1Aflutter ${pubspec.flutter ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}\u3001sdk ${pubspec.sdk ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}`,
+            detail: `\u6846\u67B6\u8981\u6C42 flutter ${expected.flutter}\u3001sdk ${expected.sdk}`,
+            fix: UPGRADE_HINT
+          });
+        }
+        if (pubspec.shell === null) {
+          add2({ level: "warn", title: `pubspec \u6C92\u6709 ${SHELL_PACKAGE} \u4F9D\u8CF4`, fix: "\u78BA\u8A8D\u9019\u662F aqutter \u7522\u751F\u7684 App \u76EE\u9304\u3002" });
+        } else if (pubspec.shell.kind === "path") {
+          add2({ level: "ok", title: `\u6BBC\u4F9D\u8CF4\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF08${pubspec.shell.path}\uFF09\uFF0C\u7565\u904E ref \u6AA2\u67E5` });
+        } else if (pubspec.shell.ref === expected.shellRef) {
+          add2({ level: "ok", title: `\u6BBC ref ${short(pubspec.shell.ref)}` });
+        } else {
+          add2({
+            level: "warn",
+            title: `\u6BBC ref \u662F ${pubspec.shell.ref ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}\uFF0C\u6846\u67B6\u7248\u672C ${expected.version} \u5C0D\u61C9 ${short(expected.shellRef)}`,
+            fix: UPGRADE_HINT
+          });
+        }
+      }
+      if (facts.fvmrc !== null) {
+        if (facts.fvmrc.version === null) {
+          add2({ level: "warn", title: ".fvmrc \u4E0D\u662F\u5408\u6CD5\u7684 JSON \u6216\u7F3A\u5C11 flutter \u6B04\u4F4D", fix: `\u6539\u70BA { "flutter": "${expected.flutterVersion}" }\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u3002` });
+        } else if (facts.fvmrc.version === expected.flutterVersion) {
+          add2({ level: "ok", title: `.fvmrc ${facts.fvmrc.version}` });
+        } else {
+          add2({ level: "warn", title: `.fvmrc \u662F ${facts.fvmrc.version}\uFF0C\u6846\u67B6\u57FA\u6E96\u662F ${expected.flutterVersion}`, fix: UPGRADE_HINT });
+        }
+      }
+      const cliSpec = facts.npmSpecs.find((entry) => entry.name === "@aqutter/aqutter-cli");
+      const clientSpec = facts.npmSpecs.find((entry) => entry.name === "@aqutter/aqutter");
+      if (cliSpec === void 0 && clientSpec === void 0) {
+        add2({ level: "ok", title: "package.json \u6C92\u6709 Aqutter \u7684\u4F9D\u8CF4\uFF0C\u7565\u904E" });
+      }
+      if (cliSpec !== void 0) {
+        if (classifyCliSpec(cliSpec.spec) === "legacy") {
+          add2({
+            level: "warn",
+            title: `@aqutter/aqutter-cli \u4ECD\u7528\u820A\u7684\u5B50\u76EE\u9304\u5B89\u88DD\u8A9E\u6CD5\uFF08${cliSpec.spec}\uFF09`,
+            detail: "\u9019\u500B\u8A9E\u6CD5\u53EA\u6709 pnpm \u80FD\u5B89\u88DD\uFF0Cnpm\u3001yarn\u3001bun \u90FD\u6703\u5931\u6557\u3002",
+            fix: `${UPGRADE_HINT}\uFF0C\u518D\u91CD\u65B0\u5B89\u88DD\u4F9D\u8CF4\u3002`
+          });
+        } else {
+          add2({ level: "ok", title: `@aqutter/aqutter-cli \u4F9D\u8CF4 ${cliSpec.spec}` });
+        }
+      }
+      if (clientSpec !== void 0 && isClientGithubSpec(clientSpec.spec)) {
+        if (clientSpec.spec === expected.clientSpec) {
+          add2({ level: "ok", title: "@aqutter/aqutter \u8207\u6846\u67B6\u7248\u672C\u4E00\u81F4" });
+        } else {
+          add2({
+            level: "warn",
+            title: `@aqutter/aqutter \u8207\u6846\u67B6\u7248\u672C ${expected.version} \u4E0D\u4E00\u81F4\uFF1A${clientSpec.spec}`,
+            detail: `\u6846\u67B6\u7248\u672C\u8981\u6C42 ${expected.clientSpec}`,
+            fix: `${UPGRADE_HINT}\uFF0C\u518D\u91CD\u65B0\u5B89\u88DD\u4F9D\u8CF4\u3002`
+          });
+        }
+      }
+      if (facts.lock === null) {
+        add2({ level: "warn", title: "\u6C92\u6709 pubspec.lock", fix: "\u5728 App \u76EE\u9304\u57F7\u884C `flutter pub get`\u3002" });
+      } else {
+        const wanted = { [SHELL_PACKAGE]: expected.shellRef, aqutter_core: expected.coreRef };
+        for (const name of LOCKED_PACKAGES) {
+          const entry = facts.lock[name];
+          if (!entry) {
+            continue;
+          }
+          if (entry.resolvedRef === wanted[name]) {
+            add2({ level: "ok", title: `${name} lock \u8207\u6846\u67B6\u7248\u672C\u4E00\u81F4\uFF08${short(entry.resolvedRef)}\uFF09` });
+          } else {
+            add2({
+              level: "warn",
+              title: `${name} \u7684 lock \u8207\u6846\u67B6\u7248\u672C ${expected.version} \u4E0D\u4E00\u81F4\uFF1A\u9396\u5728 ${short(entry.resolvedRef)}\uFF0C\u6846\u67B6\u8A18\u8F09 ${short(wanted[name])}`,
+              fix: "\u5728 App \u76EE\u9304\u57F7\u884C `flutter pub upgrade aqutter aqutter_core`\uFF08`aqutter upgrade` \u4E5F\u6703\u505A\uFF09\u3002"
+            });
+          }
+        }
+      }
+      return findings;
+    };
+    readIfExists = (file) => existsSync3(file) ? readFileSync4(file, "utf8") : null;
+    detectFlutterVersion = (cwd) => {
+      const result = spawnSync2("flutter", ["--version", "--machine"], { cwd, encoding: "utf8", shell: IS_WIN });
+      const out = result.stdout ?? "";
+      const start = out.indexOf("{");
+      const end = out.lastIndexOf("}");
+      if (start === -1 || end <= start) {
+        return null;
+      }
+      try {
+        const version = JSON.parse(out.slice(start, end + 1)).frameworkVersion;
+        return typeof version === "string" ? version : null;
+      } catch {
+        return null;
+      }
+    };
+    gatherFacts = (project, expected) => {
+      const pubspecText = readIfExists(join4(project.appDir, "pubspec.yaml"));
+      const fvmrcText = readIfExists(join4(project.appDir, ".fvmrc"));
+      const packageText = readIfExists(join4(project.root, "package.json"));
+      const lockText = readIfExists(join4(project.appDir, "pubspec.lock"));
+      return {
+        expected,
+        cliVersion: package_default.version,
+        installedFlutter: detectFlutterVersion(project.appDir),
+        pubspec: pubspecText === null ? null : parsePubspec(pubspecText),
+        fvmrc: fvmrcText === null ? null : { version: parseFvmrc(fvmrcText) },
+        npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
+        lock: lockText === null ? null : parseLock(lockText)
+      };
+    };
+    LABEL = { ok: "[ok]  ", warn: "[\u8B66\u544A]", error: "[\u932F\u8AA4]" };
+    runDoctor = async (project, argv) => {
+      const offline = argv.includes("--offline");
+      console.log(`[${TAG}] \u5C08\u6848\uFF1A${project.root}\uFF08CLI ${package_default.version}\uFF09`);
+      const loaded = await loadConfiguredManifest({ offline, projectConfig: project.config });
+      const { version, release } = resolveRelease(loaded.manifest);
+      console.log(`[${TAG}] \u6846\u67B6\u7248\u672C\uFF1A${version}\uFF08manifest \u4F86\u6E90\uFF1A${loaded.source}\uFF09`);
+      const findings = diagnose(gatherFacts(project, expectedProfile(version, release)));
+      for (const finding of findings) {
+        console.log(`${LABEL[finding.level]} ${finding.title}`);
+        if (finding.detail) {
+          console.log(`         ${finding.detail}`);
+        }
+        if (finding.fix && finding.level !== "ok") {
+          console.log(`         \u2192 ${finding.fix}`);
+        }
+      }
+      const errors = findings.filter((f) => f.level === "error").length;
+      const warnings = findings.filter((f) => f.level === "warn").length;
+      console.log(`
+[${TAG}] ${errors} \u500B\u932F\u8AA4\u3001${warnings} \u500B\u8B66\u544A\u3002`);
+      if (errors > 0) {
+        process.exit(1);
+      }
+    };
+    loadExpectedProfile = async (options) => {
+      const loaded = await loadConfiguredManifest({ offline: options.offline, projectConfig: options.projectConfig });
+      const { version, release } = resolveRelease(loaded.manifest, options.requested);
+      assertCliSupports(release, package_default.version);
+      return { expected: expectedProfile(version, release), release, source: loaded.source };
+    };
+  }
+});
+
 // src/template.ts
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync2, statSync as statSync2, writeFileSync, copyFileSync } from "node:fs";
-import { dirname as dirname2, join as join3, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync5, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync2, copyFileSync } from "node:fs";
+import { dirname as dirname2, join as join5, resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 var GITIGNORE_STORED_NAME, BINARY_EXTENSIONS, isBinary, substitute, findTemplateRoot, renderTree;
 var init_template = __esm({
@@ -495,8 +1316,8 @@ var init_template = __esm({
     findTemplateRoot = () => {
       let dir = dirname2(fileURLToPath(import.meta.url));
       for (let depth = 0; depth < 6; depth += 1) {
-        const candidate = join3(dir, "template");
-        if (existsSync3(join3(candidate, "app"))) {
+        const candidate = join5(dir, "template");
+        if (existsSync4(join5(candidate, "app"))) {
           return candidate;
         }
         dir = resolve2(dir, "..");
@@ -508,23 +1329,23 @@ var init_template = __esm({
       const skipped = [];
       const walk2 = (from, to) => {
         for (const name of readdirSync2(from)) {
-          const src = join3(from, name);
+          const src = join5(from, name);
           const outName = name === GITIGNORE_STORED_NAME ? ".gitignore" : substitute(name, variables);
-          const dst = join3(to, outName);
-          if (statSync2(src).isDirectory()) {
+          const dst = join5(to, outName);
+          if (statSync3(src).isDirectory()) {
             walk2(src, dst);
             continue;
           }
-          if (existsSync3(dst) && !overwrite) {
+          if (existsSync4(dst) && !overwrite) {
             skipped.push(dst);
             continue;
           }
-          mkdirSync2(dirname2(dst), { recursive: true });
-          const content = readFileSync3(src);
+          mkdirSync3(dirname2(dst), { recursive: true });
+          const content = readFileSync5(src);
           if (isBinary(src, content)) {
             copyFileSync(src, dst);
           } else {
-            writeFileSync(dst, substitute(content.toString("utf8"), variables));
+            writeFileSync2(dst, substitute(content.toString("utf8"), variables));
           }
           written.push(dst);
         }
@@ -545,19 +1366,20 @@ __export(init_exports, {
   toDisplayName: () => toDisplayName,
   usePathDependency: () => usePathDependency
 });
-import { appendFileSync, existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join4, relative, resolve as resolve3 } from "node:path";
-var TAG, fail, toAppName, toCamel, toDisplayName, detectFramework, GITIGNORE_ENTRIES, appendGitignore, usePathDependency, runInit;
+import { appendFileSync, existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join6, relative, resolve as resolve3 } from "node:path";
+var TAG2, fail, toAppName, toCamel, toDisplayName, detectFramework, GITIGNORE_ENTRIES, appendGitignore, usePathDependency, runInit;
 var init_init = __esm({
   "src/commands/init.ts"() {
     "use strict";
     init_package();
     init_config();
     init_shared();
+    init_doctor();
     init_template();
-    TAG = "init";
+    TAG2 = "init";
     fail = (message) => {
-      console.error(`[${TAG}] ${message}`);
+      console.error(`[${TAG2}] ${message}`);
       process.exit(1);
     };
     toAppName = (raw) => {
@@ -568,7 +1390,7 @@ var init_init = __esm({
     toCamel = (snake) => snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
     toDisplayName = (snake) => snake.split("_").filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
     detectFramework = (root) => {
-      const has = (prefix) => ["ts", "js", "mjs", "mts"].some((ext) => existsSync4(join4(root, `${prefix}.config.${ext}`)));
+      const has = (prefix) => ["ts", "js", "mjs", "mts"].some((ext) => existsSync5(join6(root, `${prefix}.config.${ext}`)));
       if (has("nuxt")) {
         return "nuxt";
       }
@@ -587,8 +1409,8 @@ var init_init = __esm({
       "!.env/.env.example"
     ];
     appendGitignore = (root, appDir) => {
-      const file = join4(root, ".gitignore");
-      const current = existsSync4(file) ? readFileSync4(file, "utf8") : "";
+      const file = join6(root, ".gitignore");
+      const current = existsSync5(file) ? readFileSync6(file, "utf8") : "";
       const wanted = [
         ...GITIGNORE_ENTRIES,
         `/${appDir}/assets/seed/*`,
@@ -610,14 +1432,14 @@ ${missing.join("\n")}
 `);
     };
     runInit = async (cwd, argv) => {
-      const { flags } = parseArgs(argv.filter((arg) => arg !== "--force"));
+      const { flags } = parseArgs(argv.filter((arg) => arg !== "--force" && arg !== "--offline"));
       const force = argv.includes("--force");
       const root = resolve3(cwd);
       let packageName = basename2(root);
-      const packageJson = join4(root, "package.json");
-      if (existsSync4(packageJson)) {
+      const packageJson = join6(root, "package.json");
+      if (existsSync5(packageJson)) {
         try {
-          packageName = JSON.parse(readFileSync4(packageJson, "utf8")).name ?? packageName;
+          packageName = JSON.parse(readFileSync6(packageJson, "utf8")).name ?? packageName;
         } catch {
         }
       }
@@ -635,9 +1457,9 @@ ${missing.join("\n")}
       }
       const appDirName = flags["app-dir"] ?? DEFAULT_CONFIG.appDir;
       const appDir = resolve3(root, appDirName);
-      const shellRef = flags["shell-ref"] ?? package_default.version;
-      const configFile = join4(root, CONFIG_FILE);
-      if (existsSync4(configFile) && !force) {
+      const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile({ offline: argv.includes("--offline") })).expected.shellRef);
+      const configFile = join6(root, CONFIG_FILE);
+      if (existsSync5(configFile) && !force) {
         fail(`${CONFIG_FILE} \u5DF2\u5B58\u5728\u3002\u8981\u91CD\u65B0\u5C55\u958B\u8ACB\u52A0 --force\u3002`);
       }
       const config = {
@@ -645,9 +1467,9 @@ ${missing.join("\n")}
         web: { framework }
       };
       const shellConfig = flags["shell-path"] ? { path: flags["shell-path"] } : void 0;
-      writeFileSync2(configFile, `${JSON.stringify(shellConfig ? { ...config, shell: shellConfig } : config, null, 2)}
+      writeFileSync3(configFile, `${JSON.stringify(shellConfig ? { ...config, shell: shellConfig } : config, null, 2)}
 `);
-      console.log(`[${TAG}] \u5BEB\u5165 ${CONFIG_FILE}\uFF08framework=${framework}\uFF09`);
+      console.log(`[${TAG2}] \u5BEB\u5165 ${CONFIG_FILE}\uFF08framework=${framework}\uFF09`);
       const variables = {
         appName,
         appNameCamel: toCamel(appName),
@@ -657,24 +1479,24 @@ ${missing.join("\n")}
         shellRef
       };
       const templateRoot = findTemplateRoot();
-      const { written, skipped } = renderTree(join4(templateRoot, "app"), appDir, variables, { overwrite: force });
-      console.log(`[${TAG}] \u5C55\u958B ${relative(root, appDir) || "."}/\uFF08${written.length} \u500B\u6A94\u6848\uFF0C\u7565\u904E\u5DF2\u5B58\u5728 ${skipped.length} \u500B\uFF09`);
+      const { written, skipped } = renderTree(join6(templateRoot, "app"), appDir, variables, { overwrite: force });
+      console.log(`[${TAG2}] \u5C55\u958B ${relative(root, appDir) || "."}/\uFF08${written.length} \u500B\u6A94\u6848\uFF0C\u7565\u904E\u5DF2\u5B58\u5728 ${skipped.length} \u500B\uFF09`);
       if (flags["shell-path"]) {
-        const pubspecPath = join4(appDir, "pubspec.yaml");
+        const pubspecPath = join6(appDir, "pubspec.yaml");
         const shellFlag = flags["shell-path"];
         const rel = isAbsolute2(shellFlag) ? shellFlag : relative(appDir, resolve3(root, shellFlag)).split("\\").join("/");
-        writeFileSync2(pubspecPath, usePathDependency(readFileSync4(pubspecPath, "utf8"), rel));
-        console.log(`[${TAG}] \u6BBC\u4F9D\u8CF4\u6539\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF1A${rel}`);
+        writeFileSync3(pubspecPath, usePathDependency(readFileSync6(pubspecPath, "utf8"), rel));
+        console.log(`[${TAG2}] \u6BBC\u4F9D\u8CF4\u6539\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF1A${rel}`);
       }
-      const envDir = join4(root, DEFAULT_CONFIG.envDir);
-      mkdirSync3(envDir, { recursive: true });
-      const envResult = renderTree(join4(templateRoot, "env"), envDir, variables);
+      const envDir = join6(root, DEFAULT_CONFIG.envDir);
+      mkdirSync4(envDir, { recursive: true });
+      const envResult = renderTree(join6(templateRoot, "env"), envDir, variables);
       if (envResult.written.length > 0) {
-        console.log(`[${TAG}] \u5BEB\u5165 ${DEFAULT_CONFIG.envDir}/.env.example\uFF1B\u8ACB\u8907\u88FD\u70BA ${DEFAULT_CONFIG.envDir}/.env.dev \u4E26\u586B\u503C\u3002`);
+        console.log(`[${TAG2}] \u5BEB\u5165 ${DEFAULT_CONFIG.envDir}/.env.example\uFF1B\u8ACB\u8907\u88FD\u70BA ${DEFAULT_CONFIG.envDir}/.env.dev \u4E26\u586B\u503C\u3002`);
       }
       appendGitignore(root, appDirName);
       console.log(`
-[${TAG}] \u5B8C\u6210\u3002\u4E0B\u4E00\u6B65\uFF1A`);
+[${TAG2}] \u5B8C\u6210\u3002\u4E0B\u4E00\u6B65\uFF1A`);
       console.log(`  cp ${DEFAULT_CONFIG.envDir}/.env.example ${DEFAULT_CONFIG.envDir}/.env.dev`);
       console.log(`  cd ${appDirName} && flutter pub get && cd ..`);
       console.log("  aqutter dev macos");
@@ -683,8 +1505,8 @@ ${missing.join("\n")}
 });
 
 // src/plugins.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join5, relative as relative2 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join7, relative as relative2 } from "node:path";
 var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, importOf, renderPluginsDart, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
 var init_plugins = __esm({
   "src/plugins.ts"() {
@@ -753,7 +1575,7 @@ ${plugins.map((entry) => `  ${entry.dart.class}(),`).join("\n")}
     };
     renderPubspecBlock = (plugins, projectRoot, appDir) => {
       return plugins.flatMap((entry) => {
-        const path = relative2(appDir, join5(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
+        const path = relative2(appDir, join7(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
         return [`  ${entry.dart.package}:`, `    path: ${path}`];
       });
     };
@@ -770,13 +1592,13 @@ ${middle}${pubspec.slice(end)}`;
     };
     syncPlugins = (project) => {
       const plugins = project.config.plugins;
-      const pubspecPath = join5(project.appDir, "pubspec.yaml");
-      const original = readFileSync5(pubspecPath, "utf8");
+      const pubspecPath = join7(project.appDir, "pubspec.yaml");
+      const original = readFileSync7(pubspecPath, "utf8");
       const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
       if (next !== original) {
-        writeFileSync3(pubspecPath, next);
+        writeFileSync4(pubspecPath, next);
       }
-      writeFileSync3(join5(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
+      writeFileSync4(join7(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
     };
     updateConfigPlugins = (project, update) => {
       const previous = project.config.plugins;
@@ -788,29 +1610,29 @@ ${middle}${pubspec.slice(end)}`;
         project.config.plugins = previous;
         throw error;
       }
-      const file = join5(project.root, CONFIG_FILE);
-      const raw = JSON.parse(readFileSync5(file, "utf8"));
+      const file = join7(project.root, CONFIG_FILE);
+      const raw = JSON.parse(readFileSync7(file, "utf8"));
       if (next.length === 0) {
         delete raw.plugins;
       } else {
         raw.plugins = next;
       }
-      writeFileSync3(file, `${JSON.stringify(raw, null, 2)}
+      writeFileSync4(file, `${JSON.stringify(raw, null, 2)}
 `);
     };
     readInstalledDescriptor = (projectRoot, npmName) => {
-      const file = join5(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
-      if (!existsSync5(file)) {
+      const file = join7(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
+      if (!existsSync6(file)) {
         throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
       }
-      return parseDescriptor(JSON.parse(readFileSync5(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
+      return parseDescriptor(JSON.parse(readFileSync7(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
     };
   }
 });
 
 // src/web.ts
-import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
-import { join as join6 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync8 } from "node:fs";
+import { join as join8 } from "node:path";
 var parseEnvFile, detectPackageManager, EXEC_PREFIX, execPrefixOf, execPrefix, installCommandOf, addArgs, withExec, envFromFile, shellInvocation, fill, nuxtAdapter, viteAdapter, nextAdapter, commandDev, commandGenerate, createWebAdapter;
 var init_web = __esm({
   "src/web.ts"() {
@@ -819,7 +1641,7 @@ var init_web = __esm({
     init_shared();
     parseEnvFile = (path) => {
       const result = {};
-      for (const rawLine of readFileSync6(path, "utf8").split(/\r?\n/)) {
+      for (const rawLine of readFileSync8(path, "utf8").split(/\r?\n/)) {
         const line = rawLine.trim();
         if (line === "" || line.startsWith("#")) {
           continue;
@@ -840,13 +1662,13 @@ var init_web = __esm({
       return result;
     };
     detectPackageManager = (root) => {
-      if (existsSync6(join6(root, "pnpm-lock.yaml"))) {
+      if (existsSync7(join8(root, "pnpm-lock.yaml"))) {
         return "pnpm";
       }
-      if (existsSync6(join6(root, "yarn.lock"))) {
+      if (existsSync7(join8(root, "yarn.lock"))) {
         return "yarn";
       }
-      if (existsSync6(join6(root, "bun.lock")) || existsSync6(join6(root, "bun.lockb"))) {
+      if (existsSync7(join8(root, "bun.lock")) || existsSync7(join8(root, "bun.lockb"))) {
         return "bun";
       }
       return "npm";
@@ -865,7 +1687,7 @@ var init_web = __esm({
       const prefix = execPrefix(project);
       return { command: prefix.command, args: [...prefix.args, bin, ...args], env };
     };
-    envFromFile = (project, envFile) => parseEnvFile(join6(project.root, envFile));
+    envFromFile = (project, envFile) => parseEnvFile(join8(project.root, envFile));
     shellInvocation = (command) => {
       return IS_WIN ? { command: "cmd", args: ["/c", command] } : { command: "sh", args: ["-c", command] };
     };
@@ -966,53 +1788,65 @@ __export(plugin_exports, {
   toClassName: () => toClassName,
   toSnake: () => toSnake
 });
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync7, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join7, relative as relative3, resolve as resolve4 } from "node:path";
-var TAG2, fail2, capitalize, toClassName, toSnake, runPm, readDependencyNames, create, add, remove, runPlugin;
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { existsSync as existsSync8, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
+import { isAbsolute as isAbsolute3, join as join9, relative as relative3, resolve as resolve4 } from "node:path";
+var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencyNames, clientRefOf, create, add, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
     "use strict";
-    init_package();
     init_config();
     init_shared();
     init_template();
     init_plugins();
     init_web();
+    init_doctor();
     init_init();
-    TAG2 = "plugin";
+    TAG3 = "plugin";
     fail2 = (message) => {
-      console.error(`[${TAG2}] ${message}`);
+      console.error(`[${TAG3}] ${message}`);
       process.exit(1);
     };
     capitalize = (word) => word.charAt(0).toUpperCase() + word.slice(1);
     toClassName = (id) => id.split("-").map(capitalize).join("");
     toSnake = (id) => id.replace(/-/g, "_");
     runPm = (pm, args, cwd) => {
-      console.log(`[${TAG2}] ${pm} ${args.join(" ")}`);
-      const result = spawnSync2(pm, args, { cwd, stdio: "inherit", shell: IS_WIN });
+      console.log(`[${TAG3}] ${pm} ${args.join(" ")}`);
+      const result = spawnSync3(pm, args, { cwd, stdio: "inherit", shell: IS_WIN });
       if (result.status !== 0) {
         fail2(`${pm} ${args.join(" ")} \u5931\u6557\uFF08exit ${result.status ?? "signal"}\uFF09\u3002`);
       }
     };
     readDependencyNames = (root) => {
-      const file = join7(root, "package.json");
-      if (!existsSync7(file)) {
+      const file = join9(root, "package.json");
+      if (!existsSync8(file)) {
         return /* @__PURE__ */ new Set();
       }
-      const json = JSON.parse(readFileSync7(file, "utf8"));
+      const json = JSON.parse(readFileSync9(file, "utf8"));
       return /* @__PURE__ */ new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})]);
     };
-    create = (cwd, argv) => {
-      const { positional, flags } = parseArgs(argv);
+    clientRefOf = (spec) => /#([^&]+)&path:\/client$/.exec(spec)?.[1] ?? null;
+    create = async (cwd, argv) => {
+      const { positional, flags } = parseArgs(argv.filter((arg) => arg !== "--offline"));
       const id = positional[0];
       if (!id || !PLUGIN_ID_PATTERN.test(id)) {
         return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
       }
       const dirName = flags.dir ?? `aqutter-plugin-${id}`;
       const target = resolve4(cwd, dirName);
-      if (existsSync7(target)) {
+      if (existsSync8(target)) {
         return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
+      }
+      let refs;
+      if (flags["shell-ref"] !== void 0) {
+        refs = { shellRef: flags["shell-ref"], clientRef: flags["shell-ref"] };
+      } else {
+        const { expected } = await loadExpectedProfile({ offline: argv.includes("--offline") });
+        const clientRef = clientRefOf(expected.clientSpec);
+        if (clientRef === null) {
+          return fail2(`\u6846\u67B6\u7248\u672C ${expected.version} \u7684 client \u4E0D\u662F GitHub \u4F9D\u8CF4\uFF08${expected.clientSpec}\uFF09\uFF0Cplugin create \u9084\u4E0D\u652F\u63F4\uFF1B\u8ACB\u7528 --shell-ref \u6307\u5B9A\u3002`);
+        }
+        refs = { shellRef: expected.shellRef, clientRef };
       }
       const variables = {
         id,
@@ -1020,17 +1854,17 @@ var init_plugin = __esm({
         className: toClassName(id),
         dartPackage: `aqutter_plugin_${toSnake(id)}`,
         npmName: flags["npm-name"] ?? `aqutter-plugin-${id}`,
-        shellRef: flags["shell-ref"] ?? package_default.version,
-        clientRef: flags["shell-ref"] ?? package_default.version
+        shellRef: refs.shellRef,
+        clientRef: refs.clientRef
       };
-      const { written } = renderTree(join7(findTemplateRoot(), "plugin"), target, variables);
+      const { written } = renderTree(join9(findTemplateRoot(), "plugin"), target, variables);
       if (flags["shell-path"]) {
         const shellFlag = flags["shell-path"];
         const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve4(cwd, shellFlag)).split("\\").join("/");
-        const pubspec = join7(target, "pubspec.yaml");
-        writeFileSync4(pubspec, usePathDependency(readFileSync7(pubspec, "utf8"), rel));
+        const pubspec = join9(target, "pubspec.yaml");
+        writeFileSync5(pubspec, usePathDependency(readFileSync9(pubspec, "utf8"), rel));
       }
-      console.log(`[${TAG2}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
+      console.log(`[${TAG3}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
       console.log("\n\u4E0B\u4E00\u6B65\uFF1A");
       console.log(`  cd ${dirName} && pnpm install && flutter pub get && flutter test`);
       console.log(`  \u4E4B\u5F8C\u5728 App \u5C08\u6848\uFF1Aaqutter plugin add file:../${dirName}`);
@@ -1061,7 +1895,7 @@ var init_plugin = __esm({
         ...plugins.filter((entry) => entry.id !== descriptor.id),
         { id: descriptor.id, npm: npmName, dart: descriptor.dart }
       ].sort((a, b) => a.id.localeCompare(b.id)));
-      console.log(`[${TAG2}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
+      console.log(`[${TAG3}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
     };
     remove = (cwd, argv) => {
       const id = argv[0];
@@ -1076,13 +1910,13 @@ var init_plugin = __esm({
       updateConfigPlugins(project, (plugins) => plugins.filter((plugin) => plugin.id !== id));
       const pm = detectPackageManager(project.root);
       runPm(pm, ["remove", entry.npm], project.root);
-      console.log(`[${TAG2}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
+      console.log(`[${TAG3}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
     };
     runPlugin = async (cwd, argv) => {
       const [sub, ...rest] = argv;
       switch (sub) {
         case "create":
-          return create(cwd, rest);
+          return await create(cwd, rest);
         case "add":
           return add(cwd, rest);
         case "remove":
@@ -1090,7 +1924,7 @@ var init_plugin = __esm({
         case "sync": {
           const project = loadProject(cwd);
           syncPlugins(project);
-          console.log(`[${TAG2}] \u5DF2\u540C\u6B65 ${project.config.plugins.length} \u500B plugin\u3002`);
+          console.log(`[${TAG3}] \u5DF2\u540C\u6B65 ${project.config.plugins.length} \u500B plugin\u3002`);
           return;
         }
         case "list": {
@@ -1108,8 +1942,8 @@ var init_plugin = __esm({
 });
 
 // src/environments.ts
-import { existsSync as existsSync8 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync9 } from "node:fs";
+import { join as join10 } from "node:path";
 var normalize, defaultEnvFileOf, envFileOf, fromConfig, listConfigured, resolveEnvironment;
 var init_environments = __esm({
   "src/environments.ts"() {
@@ -1139,7 +1973,7 @@ var init_environments = __esm({
       const configured = Object.hasOwn(environments, value) ? environments[value] : void 0;
       if (configured) {
         const envFile2 = envFileOf(project, value, configured);
-        if (!existsSync8(join8(project.root, envFile2))) {
+        if (!existsSync9(join10(project.root, envFile2))) {
           return {
             ok: false,
             error: `\u74B0\u5883\u300C${value}\u300D\u7684 env \u6A94 \`${envFile2}\` \u4E0D\u5B58\u5728\u3002\u8ACB\u7531 ${project.config.envDir}/.env.example \u8907\u88FD\u4E00\u4EFD\uFF0C\u6216\u4FEE\u6B63 aqutter.config.json \u7684 environments.${value}.envFile\u3002`
@@ -1159,7 +1993,7 @@ var init_environments = __esm({
         };
       }
       const dir = project.config.envDir;
-      const conventional = ENVIRONMENT_NAME.test(value) && existsSync8(join8(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
+      const conventional = ENVIRONMENT_NAME.test(value) && existsSync9(join10(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
       const hint = conventional ? `\u5075\u6E2C\u5230 \`${conventional}\` \u5B58\u5728\uFF0C\u4F46\u300C${value}\u300D\u4E0D\u5728\u8A2D\u5B9A\u6A94\u88E1\uFF1A\u7528 \`aqutter env add ${value}\` \u767B\u8A18\u5B83\uFF0C\u6216\u6539\u7528 -e ${conventional}\u3002` : `\u4E5F\u53EF\u4EE5\u7D66\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF08\u4F8B\u5982 ${dir}/.env.uat\uFF09\u3002`;
       return { ok: false, error: `\u627E\u4E0D\u5230\u74B0\u5883\u6216 env \u6A94\u300C${value}\u300D\u3002${listConfigured(project)}${hint}` };
     };
@@ -1167,9 +2001,9 @@ var init_environments = __esm({
 });
 
 // src/menu.ts
-import { existsSync as existsSync9, readFileSync as readFileSync8, readdirSync as readdirSync3 } from "node:fs";
-import { join as join9 } from "node:path";
-var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
+import { existsSync as existsSync10, readFileSync as readFileSync10, readdirSync as readdirSync3 } from "node:fs";
+import { join as join11 } from "node:path";
+var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists2, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
 var init_menu = __esm({
   "src/menu.ts"() {
     "use strict";
@@ -1180,14 +2014,14 @@ var init_menu = __esm({
     SIGNING_PLATFORMS = ["ios", "macos", "windows"];
     envPathOf = (project, name) => `${project.config.envDir}/${ENV_PREFIX}${name}`;
     signingPathOf = (name) => `signing/signing.${name}.json`;
-    listDir = (dir) => existsSync9(dir) ? readdirSync3(dir) : [];
+    listDir = (dir) => existsSync10(dir) ? readdirSync3(dir) : [];
     listEnvFiles = (project) => {
-      return listDir(join9(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
+      return listDir(join11(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
         path: `${project.config.envDir}/${name}`,
         name: name.slice(ENV_PREFIX.length)
       }));
     };
-    readIfExists = (path) => existsSync9(path) ? readFileSync8(path, "utf8") : "";
+    readIfExists2 = (path) => existsSync10(path) ? readFileSync10(path, "utf8") : "";
     listFlavors = (project) => {
       const found = /* @__PURE__ */ new Map();
       const add2 = (name, platform) => {
@@ -1195,12 +2029,12 @@ var init_menu = __esm({
         platforms.add(platform);
         found.set(name, platforms);
       };
-      const gradle = readIfExists(join9(project.appDir, "android", "app", "build.gradle.kts"));
+      const gradle = readIfExists2(join11(project.appDir, "android", "app", "build.gradle.kts"));
       for (const match of gradle.matchAll(/create\("([a-z][a-z0-9]*)"\)/g)) {
         add2(match[1], "android");
       }
       for (const platform of ["ios", "macos"]) {
-        const pbxproj = readIfExists(join9(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
+        const pbxproj = readIfExists2(join11(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
         for (const match of pbxproj.matchAll(/name = "Release-([a-z][a-z0-9]*)";/g)) {
           add2(match[1], platform);
         }
@@ -1211,11 +2045,11 @@ var init_menu = __esm({
       }));
     };
     listSigningConfigs = (project) => {
-      const dir = join9(project.appDir, "signing");
+      const dir = join11(project.appDir, "signing");
       return listDir(dir).filter((name) => SIGNING_FILE.test(name) && !isExample(name)).sort().map((name) => {
         let platforms = [];
         try {
-          platforms = Object.keys(JSON.parse(readFileSync8(join9(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
+          platforms = Object.keys(JSON.parse(readFileSync10(join11(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
         } catch {
         }
         return {
@@ -1246,7 +2080,7 @@ var init_menu = __esm({
       let signingPath = flags.signing ?? null;
       if (withSigning && signingPath === null && xEnv) {
         const candidate = signingPathOf(xEnv);
-        if (existsSync9(join9(project.appDir, candidate))) {
+        if (existsSync10(join11(project.appDir, candidate))) {
           signingPath = candidate;
         } else {
           console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u627E\u4E0D\u5230 ${candidate}\uFF0C\u4E0D\u5E36 --signing\u3002`);
@@ -1303,11 +2137,11 @@ var dev_exports = {};
 __export(dev_exports, {
   runDev: () => runDev
 });
-import { spawn, spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync10 } from "node:fs";
+import { spawn, spawnSync as spawnSync4 } from "node:child_process";
+import { existsSync as existsSync11 } from "node:fs";
 import { networkInterfaces } from "node:os";
-import { join as join10 } from "node:path";
-var TAG3, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
+import { join as join12 } from "node:path";
+var TAG4, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
 var init_dev = __esm({
   "src/commands/dev.ts"() {
     "use strict";
@@ -1315,9 +2149,9 @@ var init_dev = __esm({
     init_environments();
     init_menu();
     init_web();
-    TAG3 = "flutter:dev";
+    TAG4 = "flutter:dev";
     fail3 = (message) => {
-      console.error(`[${TAG3}] ${message}`);
+      console.error(`[${TAG4}] ${message}`);
       process.exit(1);
     };
     sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
@@ -1339,10 +2173,10 @@ var init_dev = __esm({
     };
     findAdb = () => {
       const candidates = [
-        join10(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
-        join10(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
+        join12(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
+        join12(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
       ];
-      return candidates.find((path) => existsSync10(path)) ?? "adb";
+      return candidates.find((path) => existsSync11(path)) ?? "adb";
     };
     lanIp = () => {
       for (const infos of Object.values(networkInterfaces())) {
@@ -1359,7 +2193,7 @@ var init_dev = __esm({
       const appDir = project.appDir;
       const config = project.config;
       const listDevices = () => {
-        const result = spawnSync3("flutter", ["devices", "--machine"], {
+        const result = spawnSync4("flutter", ["devices", "--machine"], {
           cwd: appDir,
           encoding: "utf8",
           shell: IS_WIN
@@ -1371,7 +2205,7 @@ var init_dev = __esm({
         }
       };
       const listEmulators = () => {
-        const output = spawnSync3("flutter", ["emulators"], {
+        const output = spawnSync4("flutter", ["emulators"], {
           cwd: appDir,
           encoding: "utf8",
           shell: IS_WIN
@@ -1385,7 +2219,7 @@ var init_dev = __esm({
         const adb2 = findAdb();
         const names = [];
         for (const device of listDevices().filter(isAndroid)) {
-          const output = spawnSync3(adb2, ["-s", device.id, "emu", "avd", "name"], { encoding: "utf8" }).stdout ?? "";
+          const output = spawnSync4(adb2, ["-s", device.id, "emu", "avd", "name"], { encoding: "utf8" }).stdout ?? "";
           const name = output.split("\n")[0]?.trim();
           if (name) {
             names.push(name);
@@ -1405,7 +2239,7 @@ var init_dev = __esm({
         }));
       };
       const bootableIosSimulators = () => {
-        const output = spawnSync3("xcrun", ["simctl", "list", "devices", "available", "--json"], { encoding: "utf8" }).stdout ?? "";
+        const output = spawnSync4("xcrun", ["simctl", "list", "devices", "available", "--json"], { encoding: "utf8" }).stdout ?? "";
         let data;
         try {
           data = JSON.parse(output);
@@ -1536,17 +2370,17 @@ var init_dev = __esm({
           return choice.deviceId;
         }
         if (boot.type === "sim") {
-          console.log(`[${TAG3}] \u958B\u6A5F iOS \u6A21\u64EC\u5668\u2026`);
-          spawnSync3("xcrun", ["simctl", "boot", boot.udid], { stdio: "inherit" });
-          spawnSync3("open", ["-a", "Simulator"], { stdio: "ignore" });
+          console.log(`[${TAG4}] \u958B\u6A5F iOS \u6A21\u64EC\u5668\u2026`);
+          spawnSync4("xcrun", ["simctl", "boot", boot.udid], { stdio: "inherit" });
+          spawnSync4("open", ["-a", "Simulator"], { stdio: "ignore" });
           const device2 = await waitForDevice((d) => d.id === boot.udid);
           if (!device2) {
             return fail3("iOS \u6A21\u64EC\u5668\u555F\u52D5\u903E\u6642\u3002");
           }
           return device2.id;
         }
-        console.log(`[${TAG3}] \u555F\u52D5 Android \u6A21\u64EC\u5668 ${boot.id}\u2026`);
-        spawnSync3("flutter", ["emulators", "--launch", boot.id], {
+        console.log(`[${TAG4}] \u555F\u52D5 Android \u6A21\u64EC\u5668 ${boot.id}\u2026`);
+        spawnSync4("flutter", ["emulators", "--launch", boot.id], {
           cwd: appDir,
           stdio: "inherit",
           shell: IS_WIN
@@ -1607,7 +2441,7 @@ var init_dev = __esm({
       const setupConnectivity = ({ deviceId, kind, port: port2 }) => {
         if (kind === "android") {
           const adb2 = findAdb();
-          spawnSync3(adb2, ["-s", deviceId, "reverse", `tcp:${port2}`, `tcp:${port2}`], { stdio: "inherit" });
+          spawnSync4(adb2, ["-s", deviceId, "reverse", `tcp:${port2}`, `tcp:${port2}`], { stdio: "inherit" });
           return {
             devUrl: `http://localhost:${port2}`,
             devHost: null,
@@ -1634,7 +2468,7 @@ var init_dev = __esm({
       const { positional, flags } = parseArgs(argv);
       const target = positional[0] ?? "pick";
       const preset = resolveXEnv(project, flags, {
-        tag: TAG3,
+        tag: TAG4,
         withSigning: false
       });
       const { envPath, flavor: selectedFlavor } = target === "pick" ? await promptEnvAndFlavor(preset) : {
@@ -1650,7 +2484,7 @@ var init_dev = __esm({
         return fail3(`\u57E0 ${port} \u5DF2\u6709\u7A0B\u5F0F\u5728\u4F7F\u7528\uFF0C\u8ACB\u6539\u7528 --port=<n>\uFF08\u6216\u5148\u95DC\u9589\u5360\u7528\u8005\uFF09\u3002`);
       }
       if (positional.length > 1) {
-        console.warn(`[${TAG3}] \u5FFD\u7565\u591A\u9918\u4F4D\u7F6E\u53C3\u6578\uFF1A${positional.slice(1).join(" ")}\uFF08\u74B0\u5883\u8ACB\u7528 -e <\u74B0\u5883\u540D\u6216 env \u6A94\u8DEF\u5F91>\uFF09`);
+        console.warn(`[${TAG4}] \u5FFD\u7565\u591A\u9918\u4F4D\u7F6E\u53C3\u6578\uFF1A${positional.slice(1).join(" ")}\uFF08\u74B0\u5883\u8ACB\u7528 -e <\u74B0\u5883\u540D\u6216 env \u6A94\u8DEF\u5F91>\uFF09`);
       }
       const resolvedEnvironment = resolveEnvironment(project, envPath);
       if (!resolvedEnvironment.ok) {
@@ -1666,7 +2500,7 @@ var init_dev = __esm({
         port
       });
       console.log(
-        `[${TAG3}] device=${resolved.deviceId} kind=${resolved.kind} env=${envFile}${flavor ? ` flavor=${flavor}` : ""} AQUTTER_DEV_URL=${devUrl}${devHost ? ` DEV_HOST=${devHost}` : ""}`
+        `[${TAG4}] device=${resolved.deviceId} kind=${resolved.kind} env=${envFile}${flavor ? ` flavor=${flavor}` : ""} AQUTTER_DEV_URL=${devUrl}${devHost ? ` DEV_HOST=${devHost}` : ""}`
       );
       const children = [];
       let shuttingDown = false;
@@ -1678,7 +2512,7 @@ var init_dev = __esm({
         if (!child.pid) {
           return;
         }
-        spawnSync3("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+        spawnSync4("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
       };
       const shutdown = (code) => {
         if (shuttingDown) {
@@ -1686,7 +2520,7 @@ var init_dev = __esm({
         }
         shuttingDown = true;
         if (adb) {
-          spawnSync3(adb, ["-s", resolved.deviceId, "reverse", "--remove", `tcp:${port}`], { stdio: "ignore" });
+          spawnSync4(adb, ["-s", resolved.deviceId, "reverse", "--remove", `tcp:${port}`], { stdio: "ignore" });
         }
         for (const child of children) {
           try {
@@ -1727,7 +2561,7 @@ var init_dev = __esm({
         "-d",
         resolved.deviceId,
         "--dart-define-from-file",
-        join10(project.root, envFile),
+        join12(project.root, envFile),
         "--dart-define",
         `AQUTTER_DEV_URL=${devUrl}`
       ];
@@ -2454,8 +3288,8 @@ var init_esm = __esm({
 });
 
 // src/syncSeed.ts
-import { readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join11, relative as relative4 } from "node:path";
+import { readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "node:fs";
+import { join as join13, relative as relative4 } from "node:path";
 var VERSION_ENTRY, FONT_EXTENSIONS, assertNoFonts, buildVersion, packSeed;
 var init_syncSeed = __esm({
   "src/syncSeed.ts"() {
@@ -2486,7 +3320,7 @@ var init_syncSeed = __esm({
       ].join("");
     };
     packSeed = (project, sourceRelative) => {
-      const sourceDir = join11(project.root, sourceRelative);
+      const sourceDir = join13(project.root, sourceRelative);
       const files = collectFiles(sourceDir);
       if (files.length === 0) {
         throw new Error(`[syncSeed] \u627E\u4E0D\u5230\u7522\u7269\uFF0C\u8ACB\u5148\u7522\u751F\u975C\u614B\u7DB2\u9801\uFF08${sourceDir} \u70BA\u7A7A\uFF09`);
@@ -2494,7 +3328,7 @@ var init_syncSeed = __esm({
       const zipEntries = {};
       for (const file of files) {
         const name = relative4(sourceDir, file).split("\\").join("/");
-        zipEntries[name] = new Uint8Array(readFileSync9(file));
+        zipEntries[name] = new Uint8Array(readFileSync11(file));
       }
       assertNoFonts(Object.keys(zipEntries));
       const version = buildVersion();
@@ -2502,8 +3336,8 @@ var init_syncSeed = __esm({
 `;
       zipEntries[VERSION_ENTRY] = new TextEncoder().encode(versionJson);
       ensureSeedDir(project);
-      writeFileSync5(project.seedBundle, zipSync(zipEntries));
-      writeFileSync5(project.seedVersion, versionJson);
+      writeFileSync6(project.seedBundle, zipSync(zipEntries));
+      writeFileSync6(project.seedVersion, versionJson);
       console.log(`[syncSeed] \u5DF2\u6253\u5305 ${Object.keys(zipEntries).length} \u500B\u6A94\u6848\uFF08\u7248\u672C ${version}\uFF09\u2192 ${project.seedBundle}`);
       return version;
     };
@@ -2515,10 +3349,10 @@ var seed_exports = {};
 __export(seed_exports, {
   runSeed: () => runSeed
 });
-import { spawnSync as spawnSync4 } from "node:child_process";
-import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync4, readFileSync as readFileSync10, rmSync } from "node:fs";
-import { join as join12, relative as relative5 } from "node:path";
-var TAG4, WEB_ARTIFACT_NAME, fail4, runSeed;
+import { spawnSync as spawnSync5 } from "node:child_process";
+import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync5, readFileSync as readFileSync12, rmSync } from "node:fs";
+import { join as join14, relative as relative5 } from "node:path";
+var TAG5, WEB_ARTIFACT_NAME, fail4, runSeed;
 var init_seed = __esm({
   "src/commands/seed.ts"() {
     "use strict";
@@ -2526,10 +3360,10 @@ var init_seed = __esm({
     init_environments();
     init_syncSeed();
     init_web();
-    TAG4 = "flutter:seed";
+    TAG5 = "flutter:seed";
     WEB_ARTIFACT_NAME = "web";
     fail4 = (message) => {
-      console.error(`[${TAG4}] ${message}`);
+      console.error(`[${TAG5}] ${message}`);
       process.exit(1);
     };
     runSeed = async (project, argv) => {
@@ -2545,20 +3379,20 @@ var init_seed = __esm({
       if (!envName) {
         return fail4(`\u7121\u6CD5\u7531 env \u6A94 \`${envFile}\` \u63A8\u5C0E\u74B0\u5883\u540D\uFF08\u6A94\u540D\u9808\u70BA .env.<\u74B0\u5883> \u5F62\u5F0F\uFF0C\u4F8B\u5982 ${project.config.envDir}/.env.uat\uFF0C\u6216\u5728 aqutter.config.json \u7684 environments \u547D\u540D\uFF09\u3002`);
       }
-      console.log(`[${TAG4}] env=${envFile}`);
+      console.log(`[${TAG5}] env=${envFile}`);
       const web = createWebAdapter(project, environment.web);
       if (web.cleanDirs.length > 0) {
-        console.log(`[${TAG4}] clean: ${web.cleanDirs.join(" / ")}\uFF08\u907F\u514D\u6CBF\u7528\u524D\u4E00\u4EFD env \u7684\u8A2D\u5B9A\u503C\uFF09`);
+        console.log(`[${TAG5}] clean: ${web.cleanDirs.join(" / ")}\uFF08\u907F\u514D\u6CBF\u7528\u524D\u4E00\u4EFD env \u7684\u8A2D\u5B9A\u503C\uFF09`);
       }
       for (const dir of web.cleanDirs) {
-        rmSync(join12(project.root, dir), {
+        rmSync(join14(project.root, dir), {
           recursive: true,
           force: true
         });
       }
       for (const stepSpec of web.generate({ envFile })) {
-        console.log(`[${TAG4}] ${stepSpec.label}: ${stepSpec.command} ${stepSpec.args.join(" ")}`);
-        const result = spawnSync4(stepSpec.command, stepSpec.args, {
+        console.log(`[${TAG5}] ${stepSpec.label}: ${stepSpec.command} ${stepSpec.args.join(" ")}`);
+        const result = spawnSync5(stepSpec.command, stepSpec.args, {
           cwd: project.root,
           stdio: "inherit",
           shell: IS_WIN,
@@ -2571,20 +3405,20 @@ var init_seed = __esm({
           fail4(`\u6B65\u9A5F\u5931\u6557\uFF1A${stepSpec.label}\uFF08exit ${result.status ?? "signal"}\uFF09\u3002`);
         }
       }
-      console.log(`[${TAG4}] pack seed`);
+      console.log(`[${TAG5}] pack seed`);
       packSeed(project, web.outputDir);
-      const { version } = JSON.parse(readFileSync10(project.seedVersion, "utf8"));
-      mkdirSync4(project.artifactsDir, { recursive: true });
-      const artifact = join12(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
+      const { version } = JSON.parse(readFileSync12(project.seedVersion, "utf8"));
+      mkdirSync5(project.artifactsDir, { recursive: true });
+      const artifact = join14(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
       copyFileSync2(project.seedBundle, artifact);
-      console.log(`[${TAG4}] \u5B8C\u6210\uFF08env=${envFile}\uFF09\u2192 ${relative5(project.root, artifact)}`);
+      console.log(`[${TAG5}] \u5B8C\u6210\uFF08env=${envFile}\uFF09\u2192 ${relative5(project.root, artifact)}`);
     };
   }
 });
 
 // src/signing.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync5, readFileSync as readFileSync11, readdirSync as readdirSync4, writeFileSync as writeFileSync6 } from "node:fs";
-import { join as join13 } from "node:path";
+import { existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync13, readdirSync as readdirSync4, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join15 } from "node:path";
 function signingSectionOf(config, signingPath, platformKey) {
   const section = config[platformKey];
   if (!section || typeof section !== "object") {
@@ -2599,17 +3433,17 @@ function signingSectionOf(config, signingPath, platformKey) {
   }
   return section;
 }
-var TAG5, fail5, step, REQUIRED_FIELDS, DEFAULT_TIMESTAMP_URL, iosPaths, readSigningConfig, xmlEscape, renderExportOptions, archiveAndExportIpa, signMacosApp, signWindowsExe;
+var TAG6, fail5, step, REQUIRED_FIELDS, DEFAULT_TIMESTAMP_URL, iosPaths, readSigningConfig, xmlEscape, renderExportOptions, archiveAndExportIpa, signMacosApp, signWindowsExe;
 var init_signing = __esm({
   "src/signing.ts"() {
     "use strict";
     init_shared();
-    TAG5 = "sign";
+    TAG6 = "sign";
     fail5 = (message) => {
-      console.error(`[${TAG5}] ${message}`);
+      console.error(`[${TAG6}] ${message}`);
       process.exit(1);
     };
-    step = createStep(TAG5);
+    step = createStep(TAG6);
     REQUIRED_FIELDS = {
       ios: ["method", "teamId", "certificate", "profile", "bundleId"],
       macos: ["identity"],
@@ -2617,21 +3451,21 @@ var init_signing = __esm({
     };
     DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com";
     iosPaths = (project) => {
-      const buildDir = join13(project.appDir, "build", "ios");
+      const buildDir = join15(project.appDir, "build", "ios");
       return {
         buildDir,
-        archive: join13(buildDir, "archive", "Runner.xcarchive"),
-        exportDir: join13(buildDir, "ipa"),
-        exportOptions: join13(buildDir, "ExportOptions.plist")
+        archive: join15(buildDir, "archive", "Runner.xcarchive"),
+        exportDir: join15(buildDir, "ipa"),
+        exportOptions: join15(buildDir, "ExportOptions.plist")
       };
     };
     readSigningConfig = (project, signingPath) => {
-      const file = join13(project.appDir, signingPath);
-      if (!existsSync11(file)) {
+      const file = join15(project.appDir, signingPath);
+      if (!existsSync12(file)) {
         return fail5(`\u627E\u4E0D\u5230\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\`\uFF08\`--signing=\` \u5403\u7684\u662F\u76F8\u5C0D ${project.config.appDir}/ \u7684\u8DEF\u5F91\uFF0C\u7BC4\u672C\u898B ${project.config.appDir}/signing/signing.example.json\uFF09\u3002`);
       }
       try {
-        return JSON.parse(readFileSync11(file, "utf8"));
+        return JSON.parse(readFileSync13(file, "utf8"));
       } catch (error) {
         return fail5(`\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${error.message}`);
       }
@@ -2676,7 +3510,7 @@ var init_signing = __esm({
       const configuration = flavor ? `Release-${flavor}` : "Release";
       step("xcodebuild archive", "xcodebuild", [
         "-workspace",
-        join13(project.appDir, "ios", "Runner.xcworkspace"),
+        join15(project.appDir, "ios", "Runner.xcworkspace"),
         "-scheme",
         scheme,
         "-configuration",
@@ -2691,11 +3525,11 @@ var init_signing = __esm({
       ], project.appDir);
       let exportOptions = paths.exportOptions;
       if (exportOptionsPath) {
-        exportOptions = join13(project.appDir, exportOptionsPath);
+        exportOptions = join15(project.appDir, exportOptionsPath);
       } else {
-        mkdirSync5(paths.buildDir, { recursive: true });
-        writeFileSync6(exportOptions, renderExportOptions(ios));
-        console.log(`[${TAG5}] \u5DF2\u7531\u7C3D\u7AE0\u8A2D\u5B9A\u7522\u751F ${exportOptions}`);
+        mkdirSync6(paths.buildDir, { recursive: true });
+        writeFileSync7(exportOptions, renderExportOptions(ios));
+        console.log(`[${TAG6}] \u5DF2\u7531\u7C3D\u7AE0\u8A2D\u5B9A\u7522\u751F ${exportOptions}`);
       }
       step("xcodebuild -exportArchive", "xcodebuild", [
         "-exportArchive",
@@ -2715,7 +3549,7 @@ var init_signing = __esm({
         "runtime",
         "--timestamp",
         "--entitlements",
-        join13(project.appDir, "macos", "Runner", "Release.entitlements"),
+        join15(project.appDir, "macos", "Runner", "Release.entitlements"),
         "--sign",
         macos.identity,
         appPath
@@ -2739,7 +3573,7 @@ var init_signing = __esm({
         if (!password) {
           fail5("\u7C3D\u7AE0\u8A2D\u5B9A\u4F7F\u7528 pfx\uFF0C\u4F46 process env \u6C92\u6709 WIN_PFX_PASSWORD\u3002");
         }
-        certificateArgs.push("/f", join13(project.appDir, windows.pfx), "/p", password);
+        certificateArgs.push("/f", join15(project.appDir, windows.pfx), "/p", password);
       } else {
         certificateArgs.push("/sha1", windows.thumbprint);
       }
@@ -2754,7 +3588,7 @@ var init_signing = __esm({
           "/tr",
           windows.timestampUrl ?? DEFAULT_TIMESTAMP_URL,
           ...certificateArgs,
-          join13(releaseDir, name)
+          join15(releaseDir, name)
         ], project.appDir, secrets);
       }
     };
@@ -2773,9 +3607,9 @@ __export(build_exports, {
   locateProduct: () => locateProduct,
   runBuild: () => runBuild
 });
-import { copyFileSync as copyFileSync3, existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync7 } from "node:fs";
-import { basename as basename3, join as join14, relative as relative6 } from "node:path";
-var TAG6, FLUTTER_TARGET, fail6, BuildError, DESKTOP_ARCH, findSingle, locateProduct, artifactStem, ZIP_OS_UNIX, UNIX_MODE_SHIFT, UNIX_TYPE_FILE, UNIX_TYPE_SYMLINK, UNIX_PERMISSION_MASK, SYMLINK_PERMISSION, unixAttrs, zipEntryOf, zipDirectory, publishArtifact, step2, SIGNING_SECTION, HOST_PLATFORMS, PLATFORM_LABEL, buildOne, promptSelections, runBuild;
+import { copyFileSync as copyFileSync3, existsSync as existsSync13, mkdirSync as mkdirSync7, readFileSync as readFileSync14, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync8 } from "node:fs";
+import { basename as basename3, join as join16, relative as relative6 } from "node:path";
+var TAG7, FLUTTER_TARGET, fail6, BuildError, DESKTOP_ARCH, findSingle, locateProduct, artifactStem, ZIP_OS_UNIX, UNIX_MODE_SHIFT, UNIX_TYPE_FILE, UNIX_TYPE_SYMLINK, UNIX_PERMISSION_MASK, SYMLINK_PERMISSION, unixAttrs, zipEntryOf, zipDirectory, publishArtifact, step2, SIGNING_SECTION, HOST_PLATFORMS, PLATFORM_LABEL, buildOne, promptSelections, runBuild;
 var init_build = __esm({
   "src/commands/build.ts"() {
     "use strict";
@@ -2785,7 +3619,7 @@ var init_build = __esm({
     init_environments();
     init_signing();
     init_seed();
-    TAG6 = "build";
+    TAG7 = "build";
     FLUTTER_TARGET = {
       apk: "apk",
       aab: "appbundle",
@@ -2796,79 +3630,79 @@ var init_build = __esm({
       linux: "linux"
     };
     fail6 = (message) => {
-      console.error(`[${TAG6}] ${message}`);
+      console.error(`[${TAG7}] ${message}`);
       process.exit(1);
     };
     BuildError = class extends Error {
       constructor(message) {
-        super(`[${TAG6}] ${message}`);
+        super(`[${TAG7}] ${message}`);
         this.name = "BuildError";
       }
     };
     DESKTOP_ARCH = process.arch === "arm64" ? "arm64" : "x64";
     findSingle = (dir, extension) => {
-      if (!existsSync12(dir)) {
+      if (!existsSync13(dir)) {
         return null;
       }
       const matches = readdirSync5(dir).filter((entry) => entry.endsWith(extension));
-      return matches.length === 1 ? join14(dir, matches[0]) : null;
+      return matches.length === 1 ? join16(dir, matches[0]) : null;
     };
     locateProduct = (project, target, flavorName) => {
-      const buildDir = join14(project.appDir, "build");
+      const buildDir = join16(project.appDir, "build");
       switch (target) {
         case "apk": {
-          const file = join14(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
+          const file = join16(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
           return {
             kind: "file",
-            path: existsSync12(file) ? file : null,
+            path: existsSync13(file) ? file : null,
             expected: file
           };
         }
         case "aab": {
-          const file = flavorName ? join14(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join14(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
+          const file = flavorName ? join16(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join16(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
           return {
             kind: "file",
-            path: existsSync12(file) ? file : null,
+            path: existsSync13(file) ? file : null,
             expected: file
           };
         }
         case "ipa": {
-          const dir = join14(buildDir, "ios", "ipa");
+          const dir = join16(buildDir, "ios", "ipa");
           return {
             kind: "file",
             path: findSingle(dir, ".ipa"),
-            expected: join14(dir, "*.ipa")
+            expected: join16(dir, "*.ipa")
           };
         }
         case "ios": {
-          const dir = join14(buildDir, "ios", "iphoneos", "Runner.app");
+          const dir = join16(buildDir, "ios", "iphoneos", "Runner.app");
           return {
             kind: "dir",
-            path: existsSync12(dir) ? dir : null,
+            path: existsSync13(dir) ? dir : null,
             expected: dir
           };
         }
         case "macos": {
-          const dir = join14(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
+          const dir = join16(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
           return {
             kind: "dir",
             path: findSingle(dir, ".app"),
-            expected: join14(dir, "*.app")
+            expected: join16(dir, "*.app")
           };
         }
         case "windows": {
-          const dir = join14(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
+          const dir = join16(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
           return {
             kind: "dir",
-            path: existsSync12(dir) ? dir : null,
+            path: existsSync13(dir) ? dir : null,
             expected: dir
           };
         }
         case "linux": {
-          const dir = join14(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
+          const dir = join16(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
           return {
             kind: "dir",
-            path: existsSync12(dir) ? dir : null,
+            path: existsSync13(dir) ? dir : null,
             expected: dir
           };
         }
@@ -2894,7 +3728,7 @@ var init_build = __esm({
     };
     zipEntryOf = (entry) => {
       if (IS_WIN) {
-        return new Uint8Array(readFileSync12(entry.path));
+        return new Uint8Array(readFileSync14(entry.path));
       }
       if (entry.kind === ENTRY_KIND.symlink) {
         return [
@@ -2907,7 +3741,7 @@ var init_build = __esm({
         ];
       }
       return [
-        new Uint8Array(readFileSync12(entry.path)),
+        new Uint8Array(readFileSync14(entry.path)),
         {
           os: ZIP_OS_UNIX,
           attrs: unixAttrs(UNIX_TYPE_FILE | entry.mode & UNIX_PERMISSION_MASK)
@@ -2921,25 +3755,25 @@ var init_build = __esm({
         const name = `${rootName}/${relative6(dir, entry.path).split("\\").join("/")}`;
         entries[name] = zipEntryOf(entry);
       }
-      writeFileSync7(destination, zipSync(entries));
+      writeFileSync8(destination, zipSync(entries));
     };
     publishArtifact = (project, target, envName, flavorName, version) => {
       const product = locateProduct(project, target, flavorName);
       if (!product.path) {
         throw new BuildError(`\u6253\u5305\u5B8C\u6210\u4F46\u627E\u4E0D\u5230\u7522\u7269\uFF1A${product.expected}`);
       }
-      mkdirSync6(project.artifactsDir, { recursive: true });
+      mkdirSync7(project.artifactsDir, { recursive: true });
       const stem = artifactStem(project.config.artifactName, envName, flavorName, version);
       if (product.kind === "file") {
-        const destination2 = join14(project.artifactsDir, `${stem}.${target}`);
+        const destination2 = join16(project.artifactsDir, `${stem}.${target}`);
         copyFileSync3(product.path, destination2);
         return destination2;
       }
-      const destination = join14(project.artifactsDir, `${stem}_${target}.zip`);
+      const destination = join16(project.artifactsDir, `${stem}_${target}.zip`);
       zipDirectory(product.path, destination);
       return destination;
     };
-    step2 = createStep(TAG6);
+    step2 = createStep(TAG7);
     SIGNING_SECTION = {
       ipa: "ios",
       macos: "macos",
@@ -2974,19 +3808,19 @@ var init_build = __esm({
         if (section) {
           signing = signingSectionOf(readSigningConfig(project, signingPath), signingPath, section);
         } else {
-          console.warn(`[${TAG6}] \u5E73\u53F0 ${platform} \u4E0D\u5957\u7528 --signing\uFF08\u50C5 ipa / macos / windows\uFF09\uFF0C\u5DF2\u5FFD\u7565\u3002`);
+          console.warn(`[${TAG7}] \u5E73\u53F0 ${platform} \u4E0D\u5957\u7528 --signing\uFF08\u50C5 ipa / macos / windows\uFF09\uFF0C\u5DF2\u5FFD\u7565\u3002`);
         }
       }
       const signedIpa = signing !== null && platform === "ipa";
       const buildTarget = signedIpa ? "ios" : FLUTTER_TARGET[platform];
-      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join14(project.root, envFile)}`];
+      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join16(project.root, envFile)}`];
       if (flavor) {
         buildArgs.push("--flavor", flavor);
       }
       if (signedIpa) {
         buildArgs.push("--no-codesign");
       } else if (exportOptions) {
-        buildArgs.push(`--export-options-plist=${join14(project.appDir, exportOptions)}`);
+        buildArgs.push(`--export-options-plist=${join16(project.appDir, exportOptions)}`);
       }
       step2(`flutter build ${buildTarget}`, "flutter", buildArgs, project.appDir);
       if (signedIpa) {
@@ -3108,7 +3942,7 @@ var init_build = __esm({
         fail6(`\u672A\u77E5\u5E73\u53F0\u300C${unknown.join("\u300D\u300C")}\u300D\uFF1A${Object.keys(FLUTTER_TARGET).join(" | ")}\uFF08\u7701\u7565\u5373\u9032\u4E92\u52D5\u9078\u55AE\uFF09\u3002`);
       }
       const preset = resolveXEnv(project, flags, {
-        tag: TAG6,
+        tag: TAG7,
         withSigning: true
       });
       const selection = requested.length > 0 ? {
@@ -3141,14 +3975,14 @@ var init_build = __esm({
         return fail6(`${project.config.appDir}/pubspec.yaml \u627E\u4E0D\u5230 \`version:\`\uFF0C\u7121\u6CD5\u7D44\u51FA\u7522\u7269\u6A94\u540D\u3002`);
       }
       console.log(
-        `[${TAG6}] platform=${platforms.join(",")} env=${envFile}${flavor ? ` flavor=${flavor}` : ""}${exportOptions ? ` export-options=${exportOptions}` : ""}${signingPath ? ` signing=${signingPath}` : ""}`
+        `[${TAG7}] platform=${platforms.join(",")} env=${envFile}${flavor ? ` flavor=${flavor}` : ""}${exportOptions ? ` export-options=${exportOptions}` : ""}${signingPath ? ` signing=${signingPath}` : ""}`
       );
       if (signingPath) {
         const signable = platforms.filter((entry) => SIGNING_SECTION[entry]);
         const config = readSigningConfig(project, signingPath);
         const unsigned = signable.filter((platform) => signingSectionOf(config, signingPath, SIGNING_SECTION[platform]) === null);
         for (const platform of unsigned) {
-          console.warn(`[${TAG6}] \u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u6C92\u6709 \`${SIGNING_SECTION[platform]}\` \u5340\u584A\uFF0C\u5E73\u53F0 ${platform} \u4E0D\u7C3D\u7AE0\u3002`);
+          console.warn(`[${TAG7}] \u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u6C92\u6709 \`${SIGNING_SECTION[platform]}\` \u5340\u584A\uFF0C\u5E73\u53F0 ${platform} \u4E0D\u7C3D\u7AE0\u3002`);
         }
         if (signable.length > 0 && unsigned.length === signable.length) {
           fail6(`\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u6C92\u6709\u4EFB\u4F55\u9078\u5230\u5E73\u53F0\u7684\u5340\u584A\uFF08${signable.map((platform) => SIGNING_SECTION[platform]).join(" / ")}\uFF09\u3002`);
@@ -3165,7 +3999,7 @@ var init_build = __esm({
       const results = [];
       for (const platform of platforms) {
         console.log(`
-[${TAG6}] ===== ${platform} =====`);
+[${TAG7}] ===== ${platform} =====`);
         try {
           const artifact = buildOne(project, {
             platform,
@@ -3194,477 +4028,15 @@ var init_build = __esm({
       const failed = results.filter((result) => result.error);
       if (platforms.length === 1 && failed.length === 0) {
         console.log(`
-[${TAG6}] \u5B8C\u6210\uFF1A${platforms[0]}\uFF08env=${envFile}${flavor ? `, flavor=${flavor}` : ""}\uFF09\u2192 ${results[0].artifact}`);
+[${TAG7}] \u5B8C\u6210\uFF1A${platforms[0]}\uFF08env=${envFile}${flavor ? `, flavor=${flavor}` : ""}\uFF09\u2192 ${results[0].artifact}`);
         return;
       }
       console.log(`
-[${TAG6}] \u7D50\u679C\uFF08env=${envFile}${flavor ? `, flavor=${flavor}` : ""}\uFF09\uFF1A`);
+[${TAG7}] \u7D50\u679C\uFF08env=${envFile}${flavor ? `, flavor=${flavor}` : ""}\uFF09\uFF1A`);
       for (const result of results) {
         console.log(result.error ? `  \u274C ${result.platform.padEnd(8)}${result.error}` : `  \u2705 ${result.platform.padEnd(8)}${result.artifact}`);
       }
       if (failed.length > 0) {
-        process.exit(1);
-      }
-    };
-  }
-});
-
-// src/versioning.ts
-var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, NPM_SPEC, readNpmSpecs, rewritePackageJson, parseLock, lowerBound, satisfies;
-var init_versioning = __esm({
-  "src/versioning.ts"() {
-    "use strict";
-    SHELL_PACKAGE = "aqutter";
-    LOCKED_PACKAGES = ["aqutter", "aqutter_core"];
-    NPM_PACKAGES = ["@aqutter/aqutter", "@aqutter/aqutter-cli"];
-    eolOf = (text) => text.includes("\r\n") ? "\r\n" : "\n";
-    splitLines = (text) => text.split(/\r?\n/);
-    indentOf = (line) => /^ */.exec(line)[0].length;
-    bodyRange = (lines, start) => {
-      const indent = indentOf(lines[start]);
-      let end = start + 1;
-      while (end < lines.length && (lines[end].trim() === "" || indentOf(lines[end]) > indent)) {
-        end += 1;
-      }
-      return [start + 1, end];
-    };
-    findLine = (lines, pattern, from = 0, to = lines.length) => {
-      for (let i = from; i < to; i += 1) {
-        if (pattern.test(lines[i])) {
-          return i;
-        }
-      }
-      return -1;
-    };
-    scalar = (raw) => {
-      const noComment = raw.replace(/\s+#.*$/, "").trim();
-      return noComment.replace(/^(['"])(.*)\1$/, "$2");
-    };
-    valueOf = (line) => scalar(line.slice(line.indexOf(":") + 1));
-    parsePubspec = (text) => {
-      const lines = splitLines(text);
-      const info = { sdk: null, flutter: null, shell: null };
-      const env = findLine(lines, /^environment:\s*$/);
-      if (env !== -1) {
-        const [from, to] = bodyRange(lines, env);
-        const sdk = findLine(lines, /^ {2}sdk:/, from, to);
-        const flutter = findLine(lines, /^ {2}flutter:/, from, to);
-        info.sdk = sdk === -1 ? null : valueOf(lines[sdk]);
-        info.flutter = flutter === -1 ? null : valueOf(lines[flutter]);
-      }
-      const deps = findLine(lines, /^dependencies:\s*$/);
-      if (deps !== -1) {
-        const [from, to] = bodyRange(lines, deps);
-        const shell = findLine(lines, new RegExp(`^ {2}${SHELL_PACKAGE}:\\s*$`), from, to);
-        if (shell !== -1) {
-          const [sFrom, sTo] = bodyRange(lines, shell);
-          const path = findLine(lines, /^ {4}path:/, sFrom, sTo);
-          const git = findLine(lines, /^ {4}git:\s*$/, sFrom, sTo);
-          if (path !== -1) {
-            info.shell = { kind: "path", ref: null, url: null, path: valueOf(lines[path]) };
-          } else if (git !== -1) {
-            const [gFrom, gTo] = bodyRange(lines, git);
-            const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo);
-            const url = findLine(lines, /^ {6}url:/, gFrom, gTo);
-            info.shell = {
-              kind: "git",
-              ref: ref === -1 ? null : valueOf(lines[ref]),
-              url: url === -1 ? null : valueOf(lines[url]),
-              path: null
-            };
-          }
-        }
-      }
-      return info;
-    };
-    rewritePubspec = (text, target) => {
-      const eol = eolOf(text);
-      const lines = splitLines(text);
-      const changes = [];
-      const quoted = (value) => `'${value}'`;
-      const setEnv = (key, value) => {
-        const env = findLine(lines, /^environment:\s*$/);
-        if (env === -1) {
-          return;
-        }
-        const [from, to] = bodyRange(lines, env);
-        const at = findLine(lines, new RegExp(`^ {2}${key}:`), from, to);
-        const wanted = `  ${key}: ${quoted(value)}`;
-        if (at === -1) {
-          let last = to - 1;
-          while (last > from && lines[last].trim() === "") {
-            last -= 1;
-          }
-          lines.splice(last + 1, 0, wanted);
-          changes.push(`environment.${key}: \uFF08\u65B0\u589E\uFF09\u2192 ${value}`);
-          return;
-        }
-        const current = valueOf(lines[at]);
-        if (current !== value) {
-          lines[at] = wanted;
-          changes.push(`environment.${key}: ${current} \u2192 ${value}`);
-        }
-      };
-      setEnv("sdk", target.sdk);
-      setEnv("flutter", target.flutter);
-      if (target.shellRef !== null) {
-        const deps = findLine(lines, /^dependencies:\s*$/);
-        if (deps !== -1) {
-          const [from, to] = bodyRange(lines, deps);
-          const shell = findLine(lines, new RegExp(`^ {2}${SHELL_PACKAGE}:\\s*$`), from, to);
-          if (shell !== -1) {
-            const [sFrom, sTo] = bodyRange(lines, shell);
-            const git = findLine(lines, /^ {4}git:\s*$/, sFrom, sTo);
-            if (git !== -1) {
-              const [gFrom, gTo] = bodyRange(lines, git);
-              const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo);
-              if (ref !== -1) {
-                const current = valueOf(lines[ref]);
-                if (current !== target.shellRef) {
-                  lines[ref] = `      ref: ${target.shellRef}`;
-                  changes.push(`${SHELL_PACKAGE} ref: ${current} \u2192 ${target.shellRef}`);
-                }
-              }
-            }
-          }
-        }
-      }
-      return { text: lines.join(eol), changes };
-    };
-    parseFvmrc = (text) => {
-      try {
-        const value = JSON.parse(text).flutter;
-        return typeof value === "string" && value !== "" ? value : null;
-      } catch {
-        return null;
-      }
-    };
-    rewriteFvmrc = (text, version) => {
-      let data = {};
-      if (text !== null && text.trim() !== "") {
-        try {
-          const parsed = JSON.parse(text);
-          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            return null;
-          }
-          data = parsed;
-        } catch {
-          return null;
-        }
-      }
-      if (data.flutter === version) {
-        return { text, changed: false };
-      }
-      return { text: `${JSON.stringify({ ...data, flutter: version }, null, 2)}
-`, changed: true };
-    };
-    NPM_SPEC = /^github:Aqutter\/aqutter#([^&]+)&path:.*$/;
-    readNpmSpecs = (text) => {
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        return [];
-      }
-      const specs = [];
-      for (const group of [json.dependencies, json.devDependencies]) {
-        for (const name of NPM_PACKAGES) {
-          const match = NPM_SPEC.exec(group?.[name] ?? "");
-          if (match) {
-            specs.push({ name, ref: match[1] });
-          }
-        }
-      }
-      return specs;
-    };
-    rewritePackageJson = (text, ref) => {
-      const changes = [];
-      const pattern = /("@aqutter\/aqutter(?:-cli)?"\s*:\s*"github:Aqutter\/aqutter#)([^&"]+)(&path:[^"]*")/g;
-      const next = text.replace(pattern, (whole, head, current, tail) => {
-        if (current === ref) {
-          return whole;
-        }
-        const name = /"(@aqutter\/[^"]+)"/.exec(head)?.[1] ?? "";
-        changes.push(`${name}: ${current} \u2192 ${ref}`);
-        return `${head}${ref}${tail}`;
-      });
-      return { text: next, changes };
-    };
-    parseLock = (text) => {
-      const lines = splitLines(text);
-      const result = {};
-      const packages = findLine(lines, /^packages:\s*$/);
-      if (packages === -1) {
-        return result;
-      }
-      const [from, to] = bodyRange(lines, packages);
-      for (let i = from; i < to; i += 1) {
-        const header = /^ {2}([A-Za-z0-9_]+):\s*$/.exec(lines[i]);
-        if (!header) {
-          continue;
-        }
-        const [bFrom, bTo] = bodyRange(lines, i);
-        const read = (key) => {
-          const at = findLine(lines, new RegExp(`^ {6}${key}:`), bFrom, bTo);
-          return at === -1 ? null : valueOf(lines[at]);
-        };
-        const resolvedRef = read("resolved-ref");
-        const url = read("url");
-        const ref = read("ref");
-        if (resolvedRef && url && ref) {
-          result[header[1]] = { url, ref, resolvedRef };
-        }
-      }
-      return result;
-    };
-    lowerBound = (constraint) => {
-      const match = />=(\d+\.\d+\.\d+)/.exec(constraint);
-      return match ? match[1] : null;
-    };
-    satisfies = (version, constraint) => {
-      const parse = (value) => {
-        const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value);
-        return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-      };
-      const compare = (a, b) => {
-        for (let i = 0; i < 3; i += 1) {
-          if (a[i] !== b[i]) {
-            return a[i] - b[i];
-          }
-        }
-        return 0;
-      };
-      const v = parse(version);
-      if (!v) {
-        return null;
-      }
-      const parts = constraint.trim().split(/\s+/);
-      let ok = true;
-      for (const part of parts) {
-        const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
-        if (!match) {
-          return null;
-        }
-        const bound = parse(match[2]);
-        const cmp = compare(v, bound);
-        const op = match[1] ?? "=";
-        const pass = op === ">=" ? cmp >= 0 : op === "<=" ? cmp <= 0 : op === ">" ? cmp > 0 : op === "<" ? cmp < 0 : cmp === 0;
-        ok = ok && pass;
-      }
-      return ok;
-    };
-  }
-});
-
-// src/commands/doctor.ts
-var doctor_exports = {};
-__export(doctor_exports, {
-  detectFlutterVersion: () => detectFlutterVersion,
-  diagnose: () => diagnose,
-  expectedProfile: () => expectedProfile,
-  gatherFacts: () => gatherFacts,
-  remoteCommit: () => remoteCommit,
-  runDoctor: () => runDoctor
-});
-import { spawnSync as spawnSync5 } from "node:child_process";
-import { existsSync as existsSync13, readFileSync as readFileSync13 } from "node:fs";
-import { join as join15 } from "node:path";
-var TAG7, expectedProfile, UPGRADE_HINT, diagnose, readIfExists2, detectFlutterVersion, remoteCommit, gatherFacts, LABEL, runDoctor;
-var init_doctor = __esm({
-  "src/commands/doctor.ts"() {
-    "use strict";
-    init_package();
-    init_shared();
-    init_template();
-    init_versioning();
-    TAG7 = "doctor";
-    expectedProfile = (templateRoot = findTemplateRoot()) => {
-      const info = parsePubspec(readFileSync13(join15(templateRoot, "app", "pubspec.yaml"), "utf8"));
-      const flutterVersion = info.flutter ? lowerBound(info.flutter) : null;
-      if (!info.sdk || !info.flutter || !flutterVersion) {
-        throw new Error("CLI \u81EA\u5E36\u7684\u7BC4\u672C\u7F3A\u5C11 environment.sdk / environment.flutter\uFF08\u9700\u6709 >= \u4E0B\u9650\uFF09\uFF0C\u7121\u6CD5\u5224\u65B7\u6846\u67B6\u7248\u672C\uFF08CLI \u5B89\u88DD\u662F\u5426\u5B8C\u6574\uFF1F\uFF09\u3002");
-      }
-      return { sdk: info.sdk, flutter: info.flutter, flutterVersion, shellRef: package_default.version };
-    };
-    UPGRADE_HINT = "\u57F7\u884C `aqutter upgrade`";
-    diagnose = (facts) => {
-      const { expected } = facts;
-      const findings = [];
-      const add2 = (finding) => {
-        findings.push(finding);
-      };
-      if (facts.installedFlutter === null) {
-        add2({ level: "error", title: "\u627E\u4E0D\u5230 flutter \u6307\u4EE4", fix: `\u5B89\u88DD Flutter ${expected.flutterVersion}\uFF0C\u4E26\u78BA\u8A8D flutter \u5728 PATH \u4E0A\u3002` });
-      } else {
-        const within = satisfies(facts.installedFlutter, expected.flutter);
-        if (within === false) {
-          add2({
-            level: "error",
-            title: `Flutter \u7248\u672C\u4E0D\u7B26\uFF1A\u5DF2\u5B89\u88DD ${facts.installedFlutter}\uFF0C\u6846\u67B6\u8981\u6C42 ${expected.flutter}`,
-            fix: `\u6539\u7528 Flutter ${expected.flutterVersion}\uFF08\u7528\u54EA\u7A2E\u5DE5\u5177\u5207\u63DB\u7248\u672C\u7531\u4F60\u6C7A\u5B9A\uFF0CFVM \u53EA\u662F\u9078\u9805\u4E4B\u4E00\uFF09\u3002`
-          });
-        } else if (facts.installedFlutter !== expected.flutterVersion) {
-          add2({
-            level: "warn",
-            title: `Flutter ${facts.installedFlutter} \u6BD4\u6846\u67B6\u9A57\u8B49\u904E\u7684\u7248\u672C\uFF08${expected.flutterVersion}\uFF09\u65B0`,
-            detail: "\u6846\u67B6\u5C1A\u672A\u5728\u6B64\u7248\u672C\u4E0A\u9A57\u8B49\uFF0C\u53EF\u4EE5\u5617\u8A66\uFF1B\u9047\u5230\u7DE8\u8B6F\u932F\u8AA4\u6642\uFF0C\u5148\u6539\u56DE\u57FA\u6E96\u7248\u672C\u78BA\u8A8D\u662F\u5426\u70BA\u7248\u672C\u5DEE\u7570\u9020\u6210\u3002"
-          });
-        } else {
-          add2({ level: "ok", title: `Flutter ${facts.installedFlutter}` });
-        }
-      }
-      if (facts.pubspec === null) {
-        add2({ level: "error", title: "\u627E\u4E0D\u5230 App \u7684 pubspec.yaml", fix: "\u78BA\u8A8D aqutter.config.json \u7684 appDir\uFF0C\u6216\u57F7\u884C `aqutter init`\u3002" });
-      } else {
-        const { pubspec } = facts;
-        if (pubspec.flutter === expected.flutter && pubspec.sdk === expected.sdk) {
-          add2({ level: "ok", title: `pubspec environment\uFF08flutter ${pubspec.flutter}\uFF09` });
-        } else {
-          add2({
-            level: "warn",
-            title: `pubspec environment \u8207\u6846\u67B6\u4E0D\u4E00\u81F4\uFF1Aflutter ${pubspec.flutter ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}\u3001sdk ${pubspec.sdk ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}`,
-            detail: `\u6846\u67B6\u8981\u6C42 flutter ${expected.flutter}\u3001sdk ${expected.sdk}`,
-            fix: UPGRADE_HINT
-          });
-        }
-        if (pubspec.shell === null) {
-          add2({ level: "warn", title: `pubspec \u6C92\u6709 ${SHELL_PACKAGE} \u4F9D\u8CF4`, fix: "\u78BA\u8A8D\u9019\u662F aqutter \u7522\u751F\u7684 App \u76EE\u9304\u3002" });
-        } else if (pubspec.shell.kind === "path") {
-          add2({ level: "ok", title: `\u6BBC\u4F9D\u8CF4\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF08${pubspec.shell.path}\uFF09\uFF0C\u7565\u904E ref \u6AA2\u67E5` });
-        } else if (pubspec.shell.ref === expected.shellRef) {
-          add2({ level: "ok", title: `\u6BBC ref ${pubspec.shell.ref}` });
-        } else {
-          add2({
-            level: "warn",
-            title: `\u6BBC ref \u662F ${pubspec.shell.ref ?? "\uFF08\u672A\u8A2D\u5B9A\uFF09"}\uFF0C\u9019\u652F CLI \u5C0D\u61C9 ${expected.shellRef}`,
-            fix: UPGRADE_HINT
-          });
-        }
-      }
-      if (facts.fvmrc !== null) {
-        if (facts.fvmrc.version === null) {
-          add2({ level: "warn", title: ".fvmrc \u4E0D\u662F\u5408\u6CD5\u7684 JSON \u6216\u7F3A\u5C11 flutter \u6B04\u4F4D", fix: `\u6539\u70BA { "flutter": "${expected.flutterVersion}" }\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u3002` });
-        } else if (facts.fvmrc.version === expected.flutterVersion) {
-          add2({ level: "ok", title: `.fvmrc ${facts.fvmrc.version}` });
-        } else {
-          add2({ level: "warn", title: `.fvmrc \u662F ${facts.fvmrc.version}\uFF0C\u6846\u67B6\u57FA\u6E96\u662F ${expected.flutterVersion}`, fix: UPGRADE_HINT });
-        }
-      }
-      const stale = facts.npmSpecs.filter((spec) => spec.ref !== expected.shellRef);
-      if (facts.npmSpecs.length === 0) {
-        add2({ level: "ok", title: "package.json \u6C92\u6709\u4EE5 github \u6307\u5B9A\u7248\u672C\u7684 Aqutter \u4F9D\u8CF4\uFF0C\u7565\u904E" });
-      } else if (stale.length === 0) {
-        add2({ level: "ok", title: `npm \u4F9D\u8CF4 ref ${expected.shellRef}` });
-      } else {
-        add2({
-          level: "warn",
-          title: `npm \u4F9D\u8CF4 ref \u8207 CLI \u4E0D\u4E00\u81F4\uFF1A${stale.map((spec) => `${spec.name}#${spec.ref}`).join("\u3001")}`,
-          fix: `${UPGRADE_HINT}\uFF0C\u518D\u91CD\u65B0\u5B89\u88DD\u4F9D\u8CF4\u3002`
-        });
-      }
-      if (facts.lock === null) {
-        add2({ level: "warn", title: "\u6C92\u6709 pubspec.lock", fix: "\u5728 App \u76EE\u9304\u57F7\u884C `flutter pub get`\u3002" });
-      } else if (facts.remote === void 0) {
-        add2({ level: "ok", title: "\u5DF2\u7565\u904E lock \u8207\u9060\u7AEF\u7684\u6BD4\u5C0D\uFF08--offline\uFF09" });
-      } else {
-        for (const name of LOCKED_PACKAGES) {
-          const entry = facts.lock[name];
-          if (!entry) {
-            continue;
-          }
-          const remote = facts.remote[`${entry.url}#${entry.ref}`];
-          if (remote === void 0 || remote === null) {
-            add2({ level: "warn", title: `\u7121\u6CD5\u67E5\u8A62 ${name} \u7684\u9060\u7AEF ${entry.ref}`, detail: "\u53EF\u80FD\u6C92\u6709\u7DB2\u8DEF\u6216\u6C92\u6709\u5B58\u53D6\u6B0A\u9650\u3002" });
-          } else if (remote !== entry.resolvedRef) {
-            add2({
-              level: "warn",
-              title: `${name} \u7684 lock \u843D\u5F8C\uFF1A\u9396\u5728 ${entry.resolvedRef.slice(0, 7)}\uFF0C\u9060\u7AEF ${entry.ref} \u5DF2\u662F ${remote.slice(0, 7)}`,
-              detail: "\u958B\u767C\u968E\u6BB5 tag \u6703\u96A8 main \u79FB\u52D5\uFF1Block \u4E0D\u6703\u81EA\u52D5\u8DDF\u4E0A\u3002",
-              fix: "\u5728 App \u76EE\u9304\u57F7\u884C `flutter pub upgrade aqutter aqutter_core`\uFF08`aqutter upgrade` \u4E5F\u6703\u505A\uFF09\u3002"
-            });
-          } else {
-            add2({ level: "ok", title: `${name} lock \u8207\u9060\u7AEF ${entry.ref} \u4E00\u81F4\uFF08${remote.slice(0, 7)}\uFF09` });
-          }
-        }
-      }
-      return findings;
-    };
-    readIfExists2 = (file) => existsSync13(file) ? readFileSync13(file, "utf8") : null;
-    detectFlutterVersion = (cwd) => {
-      const result = spawnSync5("flutter", ["--version", "--machine"], { cwd, encoding: "utf8", shell: IS_WIN });
-      const out = result.stdout ?? "";
-      const start = out.indexOf("{");
-      const end = out.lastIndexOf("}");
-      if (start === -1 || end <= start) {
-        return null;
-      }
-      try {
-        const version = JSON.parse(out.slice(start, end + 1)).frameworkVersion;
-        return typeof version === "string" ? version : null;
-      } catch {
-        return null;
-      }
-    };
-    remoteCommit = (url, ref) => {
-      const result = spawnSync5("git", ["ls-remote", url, ref, `${ref}^{}`], {
-        encoding: "utf8",
-        timeout: 15e3,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }
-      });
-      if (result.status !== 0) {
-        return null;
-      }
-      const lines = (result.stdout ?? "").split("\n").filter(Boolean);
-      const peeled = lines.find((line) => line.endsWith("^{}"));
-      const chosen = peeled ?? lines.find((line) => /\trefs\/(tags|heads)\//.test(line)) ?? lines[0];
-      return chosen ? chosen.split("	")[0] : null;
-    };
-    gatherFacts = (project, offline) => {
-      const expected = expectedProfile();
-      const pubspecText = readIfExists2(join15(project.appDir, "pubspec.yaml"));
-      const fvmrcText = readIfExists2(join15(project.appDir, ".fvmrc"));
-      const packageText = readIfExists2(join15(project.root, "package.json"));
-      const lockText = readIfExists2(join15(project.appDir, "pubspec.lock"));
-      const lock = lockText === null ? null : parseLock(lockText);
-      let remote;
-      if (!offline && lock !== null) {
-        remote = {};
-        for (const name of LOCKED_PACKAGES) {
-          const entry = lock[name];
-          if (entry) {
-            remote[`${entry.url}#${entry.ref}`] = remoteCommit(entry.url, entry.ref);
-          }
-        }
-      }
-      return {
-        expected,
-        installedFlutter: detectFlutterVersion(project.appDir),
-        pubspec: pubspecText === null ? null : parsePubspec(pubspecText),
-        fvmrc: fvmrcText === null ? null : { version: parseFvmrc(fvmrcText) },
-        npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
-        lock,
-        remote
-      };
-    };
-    LABEL = { ok: "[ok]  ", warn: "[\u8B66\u544A]", error: "[\u932F\u8AA4]" };
-    runDoctor = async (project, argv) => {
-      const offline = argv.includes("--offline");
-      console.log(`[${TAG7}] \u5C08\u6848\uFF1A${project.root}\uFF08CLI ${package_default.version}\uFF09`);
-      const findings = diagnose(gatherFacts(project, offline));
-      for (const finding of findings) {
-        console.log(`${LABEL[finding.level]} ${finding.title}`);
-        if (finding.detail) {
-          console.log(`         ${finding.detail}`);
-        }
-        if (finding.fix && finding.level !== "ok") {
-          console.log(`         \u2192 ${finding.fix}`);
-        }
-      }
-      const errors = findings.filter((f) => f.level === "error").length;
-      const warnings = findings.filter((f) => f.level === "warn").length;
-      console.log(`
-[${TAG7}] ${errors} \u500B\u932F\u8AA4\u3001${warnings} \u500B\u8B66\u544A\u3002`);
-      if (errors > 0) {
         process.exit(1);
       }
     };
@@ -3678,12 +4050,13 @@ __export(upgrade_exports, {
   runUpgrade: () => runUpgrade
 });
 import { spawnSync as spawnSync6 } from "node:child_process";
-import { existsSync as existsSync14, readFileSync as readFileSync14, writeFileSync as writeFileSync8 } from "node:fs";
-import { join as join16 } from "node:path";
+import { existsSync as existsSync14, readFileSync as readFileSync15, writeFileSync as writeFileSync9 } from "node:fs";
+import { join as join17 } from "node:path";
 var TAG8, fail7, planUpgrade, runUpgrade;
 var init_upgrade = __esm({
   "src/commands/upgrade.ts"() {
     "use strict";
+    init_package();
     init_shared();
     init_versioning();
     init_web();
@@ -3702,31 +4075,37 @@ var init_upgrade = __esm({
         shellRef: shellIsGit && !input.keepShellRef ? expected.shellRef : null
       });
       const fvmrc = input.fvmrc === null ? null : rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? "invalid";
-      const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, expected.shellRef);
+      const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, { clientSpec: expected.clientSpec, cliSpec: cliInstallSpec(package_default.version) });
       return { pubspec, fvmrc, packageJson, needsPubUpgrade: shellIsGit };
     };
     runUpgrade = async (project, argv) => {
+      const booleans = ["--dry-run", "--skip-pub", "--offline"];
       const dryRun = argv.includes("--dry-run");
       const skipPub = argv.includes("--skip-pub");
-      const expected = expectedProfile();
-      const pubspecFile = join16(project.appDir, "pubspec.yaml");
-      const fvmrcFile = join16(project.appDir, ".fvmrc");
-      const packageFile = join16(project.root, "package.json");
+      const { flags } = parseArgs(argv.filter((arg) => !booleans.includes(arg)));
+      const { expected, source } = await loadExpectedProfile({
+        offline: argv.includes("--offline"),
+        projectConfig: project.config,
+        requested: flags.to
+      });
+      const pubspecFile = join17(project.appDir, "pubspec.yaml");
+      const fvmrcFile = join17(project.appDir, ".fvmrc");
+      const packageFile = join17(project.root, "package.json");
       if (!existsSync14(pubspecFile)) {
         return fail7(`\u627E\u4E0D\u5230 ${pubspecFile}\u3002\u8ACB\u78BA\u8A8D aqutter.config.json \u7684 appDir\u3002`);
       }
-      const originalPubspec = readFileSync14(pubspecFile, "utf8");
-      const originalPackage = existsSync14(packageFile) ? readFileSync14(packageFile, "utf8") : null;
+      const originalPubspec = readFileSync15(pubspecFile, "utf8");
+      const originalPackage = existsSync14(packageFile) ? readFileSync15(packageFile, "utf8") : null;
       const plan = planUpgrade(
         {
           pubspec: originalPubspec,
-          fvmrc: existsSync14(fvmrcFile) ? readFileSync14(fvmrcFile, "utf8") : null,
+          fvmrc: existsSync14(fvmrcFile) ? readFileSync15(fvmrcFile, "utf8") : null,
           packageJson: originalPackage,
           keepShellRef: project.config.shell.path !== void 0
         },
         expected
       );
-      console.log(`[${TAG8}] \u5C0D\u9F4A\u5230 Flutter ${expected.flutterVersion}\u3001\u6BBC ref ${expected.shellRef}${dryRun ? "\uFF08dry-run\uFF0C\u4E0D\u5BEB\u6A94\uFF09" : ""}`);
+      console.log(`[${TAG8}] \u5C0D\u9F4A\u5230\u6846\u67B6\u7248\u672C ${expected.version}\uFF08Flutter ${expected.flutterVersion}\u3001\u6BBC ${expected.shellRef.slice(0, 7)}\uFF1Bmanifest \u4F86\u6E90\uFF1A${source}\uFF09${dryRun ? "\uFF08dry-run\uFF0C\u4E0D\u5BEB\u6A94\uFF09" : ""}`);
       let changed = false;
       const report = (file, changes) => {
         for (const change of changes) {
@@ -3736,21 +4115,21 @@ var init_upgrade = __esm({
       };
       report("pubspec.yaml", plan.pubspec.changes);
       if (plan.pubspec.changes.length > 0 && !dryRun) {
-        writeFileSync8(pubspecFile, plan.pubspec.text);
+        writeFileSync9(pubspecFile, plan.pubspec.text);
       }
       if (plan.fvmrc === "invalid") {
         console.warn(`  .fvmrc  \u4E0D\u662F\u5408\u6CD5 JSON\uFF0C\u5DF2\u7565\u904E\uFF08\u8ACB\u624B\u52D5\u4FEE\u6B63\uFF1A{ "flutter": "${expected.flutterVersion}" }\uFF0C\u6216\u522A\u9664\u8A72\u6A94\uFF09`);
       } else if (plan.fvmrc !== null && plan.fvmrc.changed) {
         report(".fvmrc", [`flutter \u2192 ${expected.flutterVersion}`]);
         if (!dryRun) {
-          writeFileSync8(fvmrcFile, plan.fvmrc.text);
+          writeFileSync9(fvmrcFile, plan.fvmrc.text);
         }
       }
       const npmChanged = plan.packageJson !== null && plan.packageJson.changes.length > 0;
       if (plan.packageJson !== null) {
         report("package.json", plan.packageJson.changes);
         if (npmChanged && !dryRun) {
-          writeFileSync8(packageFile, plan.packageJson.text);
+          writeFileSync9(packageFile, plan.packageJson.text);
         }
       }
       if (!changed) {
@@ -3787,8 +4166,8 @@ __export(env_exports, {
   removeEnvironment: () => removeEnvironment,
   runEnv: () => runEnv
 });
-import { copyFileSync as copyFileSync4, existsSync as existsSync15, mkdirSync as mkdirSync7, readFileSync as readFileSync15, writeFileSync as writeFileSync9 } from "node:fs";
-import { dirname as dirname3, join as join17 } from "node:path";
+import { copyFileSync as copyFileSync4, existsSync as existsSync15, mkdirSync as mkdirSync8, readFileSync as readFileSync16, writeFileSync as writeFileSync10 } from "node:fs";
+import { dirname as dirname3, join as join18 } from "node:path";
 var TAG9, readRawConfig, writeRawConfig, isEmptyObject, addEnvironment, removeEnvironment, describeWeb, listEnvironments, fail8, USAGE, runEnv;
 var init_env = __esm({
   "src/commands/env.ts"() {
@@ -3799,10 +4178,10 @@ var init_env = __esm({
     init_shared();
     TAG9 = "env";
     readRawConfig = (project) => {
-      return JSON.parse(readFileSync15(join17(project.root, CONFIG_FILE), "utf8"));
+      return JSON.parse(readFileSync16(join18(project.root, CONFIG_FILE), "utf8"));
     };
     writeRawConfig = (project, raw) => {
-      writeFileSync9(join17(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
+      writeFileSync10(join18(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
 `);
     };
     isEmptyObject = (value) => Object.keys(value).length === 0;
@@ -3815,7 +4194,7 @@ var init_env = __esm({
         throw new ConfigError(`\u74B0\u5883\u300C${name}\u300D\u5DF2\u5B58\u5728\u65BC ${CONFIG_FILE}\u3002\u8981\u4FEE\u6539\u8ACB\u76F4\u63A5\u7DE8\u8F2F\u8A2D\u5B9A\u6A94\uFF1B\u4E0D\u6703\u8986\u5BEB\u3002`);
       }
       const envFile = options.envFile ?? defaultEnvFileOf(project, name);
-      const target = join17(project.root, envFile);
+      const target = join18(project.root, envFile);
       const createdEnvFile = !existsSync15(target);
       if (createdEnvFile) {
         let source;
@@ -3824,17 +4203,17 @@ var init_env = __esm({
           if (!resolved.ok) {
             throw new ConfigError(`--from \u89E3\u6790\u5931\u6557\uFF1A${resolved.error}`);
           }
-          source = join17(project.root, resolved.value.envFile);
+          source = join18(project.root, resolved.value.envFile);
         } else {
-          source = join17(project.root, project.config.envDir, ".env.example");
+          source = join18(project.root, project.config.envDir, ".env.example");
         }
-        mkdirSync7(dirname3(target), { recursive: true });
+        mkdirSync8(dirname3(target), { recursive: true });
         if (existsSync15(source)) {
           copyFileSync4(source, target);
         } else if (options.from !== void 0) {
           throw new ConfigError(`--from \u7684\u4F86\u6E90 \`${source}\` \u4E0D\u5B58\u5728\u3002`);
         } else {
-          writeFileSync9(target, `# ${name} \u74B0\u5883\u7684\u8A2D\u5B9A\u3002\u7531 aqutter env add \u5EFA\u7ACB\uFF1B\u9375\u7684\u8AAA\u660E\u898B docs/environment.md\u3002
+          writeFileSync10(target, `# ${name} \u74B0\u5883\u7684\u8A2D\u5B9A\u3002\u7531 aqutter env add \u5EFA\u7ACB\uFF1B\u9375\u7684\u8AAA\u660E\u898B docs/environment.md\u3002
 `);
         }
       }
@@ -3892,7 +4271,7 @@ var init_env = __esm({
       for (const [name, environment] of Object.entries(project.config.environments)) {
         const envFile = environment.envFile ?? defaultEnvFileOf(project, name);
         lines.push(
-          `${name}  env=${envFile}${existsSync15(join17(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
+          `${name}  env=${envFile}${existsSync15(join18(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
         );
       }
       return lines;
@@ -3990,8 +4369,8 @@ __export(flavorAdd_exports, {
   wireDisplayName: () => wireDisplayName
 });
 import { randomBytes } from "node:crypto";
-import { existsSync as existsSync16, readFileSync as readFileSync16, writeFileSync as writeFileSync10 } from "node:fs";
-import { join as join18, relative as relative7 } from "node:path";
+import { existsSync as existsSync16, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
+import { join as join19, relative as relative7 } from "node:path";
 var TAG10, FlavorAddError, fail9, FLAVOR_NAME_PATTERN, XCODE_MODES, GRADLE_DIMENSION, ANDROID_LABEL_RESOURCE, PBX_ID_BYTES, PBX_INDENT, BUILD_SETTING_INDENT, PLIST_INDENT, GRADLE_FILE_LABEL, kotlinEscape, pbxEscape, readAndroidApplicationId, readAndroidLabel, wireAndroidLabel, renderGradleFlavor, addGradleFlavor, newPbxId, PBX_BARE_NAME, pbxName, listBuildConfigurations, readBuildSetting, setBuildSetting, runnerConfigurationIds, readXcodeIdentity, readPlistDisplayName, wireDisplayName, addXcodeConfigurations, renderXcodeScheme, PLATFORMS, createPaths, askFlavorName, runFlavorAdd;
 var init_flavorAdd = __esm({
   "src/commands/flavorAdd.ts"() {
@@ -4282,12 +4661,12 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
     };
     PLATFORMS = ["android", "ios", "macos"];
     createPaths = (project) => ({
-      androidGradle: join18(project.appDir, "android", "app", "build.gradle.kts"),
-      androidManifest: join18(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
-      xcodeProject: (platform) => join18(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
-      xcodeSchemeDir: (platform) => join18(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
-      infoPlist: (platform) => join18(project.appDir, platform, "Runner", "Info.plist"),
-      appInfoXcconfig: (platform) => join18(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
+      androidGradle: join19(project.appDir, "android", "app", "build.gradle.kts"),
+      androidManifest: join19(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
+      xcodeProject: (platform) => join19(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
+      xcodeSchemeDir: (platform) => join19(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
+      infoPlist: (platform) => join19(project.appDir, platform, "Runner", "Info.plist"),
+      appInfoXcconfig: (platform) => join19(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
     });
     askFlavorName = async (initial, askWithDefault) => {
       let name = initial ?? "";
@@ -4310,33 +4689,33 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
         if (!existsSync16(path)) {
           throw new FlavorAddError(`\u627E\u4E0D\u5230 ${rel(path)}\u3002`);
         }
-        return readFileSync16(path, "utf8");
+        return readFileSync17(path, "utf8");
       };
       const readIdentity = (platform) => {
         const appInfo = paths.appInfoXcconfig(platform);
         return readXcodeIdentity(
           readText(paths.xcodeProject(platform)),
-          existsSync16(appInfo) ? readFileSync16(appInfo, "utf8") : null
+          existsSync16(appInfo) ? readFileSync17(appInfo, "utf8") : null
         );
       };
       const applyAndroid = (flavor) => {
         const gradleLabel = rel(paths.androidGradle);
         const wired = wireAndroidLabel(readText(paths.androidGradle), readText(paths.androidManifest), gradleLabel);
         const gradle = addGradleFlavor(wired.gradle, flavor, gradleLabel);
-        writeFileSync10(paths.androidGradle, gradle);
+        writeFileSync11(paths.androidGradle, gradle);
         if (wired.changed) {
-          writeFileSync10(paths.androidManifest, wired.manifest);
+          writeFileSync11(paths.androidManifest, wired.manifest);
         }
         return [gradleLabel, ...wired.changed ? [rel(paths.androidManifest)] : []];
       };
       const writeXcodeScheme = (platform, flavor) => {
         const dir = paths.xcodeSchemeDir(platform);
-        const template = join18(dir, "Runner.xcscheme");
-        const target = join18(dir, `${flavor.name}.xcscheme`);
+        const template = join19(dir, "Runner.xcscheme");
+        const target = join19(dir, `${flavor.name}.xcscheme`);
         if (existsSync16(target)) {
           throw new FlavorAddError(`\u5DF2\u6709 scheme ${rel(target)}\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
-        writeFileSync10(target, renderXcodeScheme(readText(template), flavor.name));
+        writeFileSync11(target, renderXcodeScheme(readText(template), flavor.name));
         return rel(target);
       };
       const applyXcode = (platform, flavor, fallbackDisplayName) => {
@@ -4346,14 +4725,14 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
         if (listBuildConfigurations(original).some((block) => block.name === `Release-${flavor.name}`)) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 configuration "Release-${flavor.name}"\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
-        if (existsSync16(join18(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
+        if (existsSync16(join19(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 scheme ${flavor.name}.xcscheme\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
         const wired = wireDisplayName(original, readText(plistPath), fallbackDisplayName);
         const pbxproj = addXcodeConfigurations(wired.pbxproj, flavor);
-        writeFileSync10(projectPath, pbxproj);
+        writeFileSync11(projectPath, pbxproj);
         if (wired.changed) {
-          writeFileSync10(plistPath, wired.plist);
+          writeFileSync11(plistPath, wired.plist);
         }
         const schemePath = writeXcodeScheme(platform, flavor);
         return [rel(projectPath), ...wired.changed ? [rel(plistPath)] : [], schemePath];
@@ -4452,8 +4831,8 @@ __export(genJks_exports, {
   runGenJks: () => runGenJks
 });
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync17, unlinkSync, writeFileSync as writeFileSync11 } from "node:fs";
-import { join as join19, relative as relative8 } from "node:path";
+import { existsSync as existsSync17, unlinkSync, writeFileSync as writeFileSync12 } from "node:fs";
+import { join as join20, relative as relative8 } from "node:path";
 var TAG11, fail10, STORE_FILE_PREFIX_FROM_APP_MODULE, JKS_EXTENSION, DEFAULT_JKS_NAME, DEFAULT_ALIAS, DEFAULT_VALIDITY_YEARS, DEFAULT_LOCALITY, DEFAULT_COUNTRY, DAYS_PER_YEAR, MIN_PASSWORD_LENGTH, PASSWORD_ENV_KEY, KEY_ALGORITHM, KEY_SIZE, STORE_TYPE, KEYTOOL_BIN, keytoolCandidates, locateKeytool, isValidPassword, parseValidityYears, normalizeJksName, escapeDnValue, buildDistinguishedName, buildKeyProperties, buildKeytoolArgs, runGenJks;
 var init_genJks = __esm({
   "src/commands/genJks.ts"() {
@@ -4481,7 +4860,7 @@ var init_genJks = __esm({
     keytoolCandidates = (javaHome, keytoolBin = KEYTOOL_BIN) => {
       const candidates = [keytoolBin];
       if (javaHome) {
-        candidates.push(join19(javaHome, "bin", keytoolBin));
+        candidates.push(join20(javaHome, "bin", keytoolBin));
       }
       return candidates;
     };
@@ -4545,8 +4924,8 @@ var init_genJks = __esm({
     ];
     runGenJks = async (project, argv) => {
       void argv;
-      const androidDir = join19(project.appDir, "android");
-      const keyPropertiesFile = join19(androidDir, "key.properties");
+      const androidDir = join20(project.appDir, "android");
+      const keyPropertiesFile = join20(androidDir, "key.properties");
       const gitignoreLabel = `${project.config.appDir}/android/.gitignore`;
       const {
         askWithDefault,
@@ -4629,7 +5008,7 @@ var init_genJks = __esm({
       const password = await askPassword();
       const validityYears = await askValidityYears();
       const distinguishedName = await askDistinguishedName();
-      const jksPath = join19(androidDir, jksName);
+      const jksPath = join20(androidDir, jksName);
       await ensureCanWrite(jksPath, "keystore");
       await ensureCanWrite(keyPropertiesFile, "key.properties");
       console.log(`
@@ -4642,7 +5021,7 @@ var init_genJks = __esm({
         distinguishedName,
         password
       });
-      writeFileSync11(keyPropertiesFile, buildKeyProperties({ jksName, alias, password }), "utf8");
+      writeFileSync12(keyPropertiesFile, buildKeyProperties({ jksName, alias, password }), "utf8");
       console.log("\n\u5B8C\u6210\uFF1A");
       console.log(`  keystore       \u2192 ${relative8(project.root, jksPath)}`);
       console.log(`  key.properties \u2192 ${relative8(project.root, keyPropertiesFile)}`);
@@ -4669,10 +5048,13 @@ var HELP = `aqutter ${package_default.version}
   android gen-jks      \u7522\u751F Android \u7C3D\u7AE0\u7528 keystore \u8207 key.properties
   plugin create <name> \u7522\u751F Aqutter plugin \u5C08\u6848
   plugin add <pkg>     \u628A plugin \u52A0\u5165\u76EE\u524D\u5C08\u6848
-  doctor [--offline]   \u6AA2\u67E5\u5C08\u6848\u8207\u672C CLI \u5C0D\u61C9\u7684\u6846\u67B6\u7248\u672C\u662F\u5426\u4E00\u81F4\uFF08Flutter\u3001\u6BBC ref\u3001.fvmrc\u3001npm \u4F9D\u8CF4\u3001lock\uFF09
-  upgrade [--dry-run]  \u628A\u5C08\u6848\u5C0D\u9F4A\u5230\u672C CLI \u5C0D\u61C9\u7684\u6846\u67B6\u7248\u672C\uFF08pubspec / .fvmrc / package.json\uFF0C\u4E26\u66F4\u65B0 lock\uFF09
+  doctor [--offline]   \u6AA2\u67E5\u5C08\u6848\u8207\u6846\u67B6 release manifest \u7684\u7248\u672C\u662F\u5426\u4E00\u81F4\uFF08Flutter\u3001\u6BBC ref\u3001.fvmrc\u3001npm \u4F9D\u8CF4\u3001lock\uFF09
+  upgrade [--to=<\u7248\u672C>] [--dry-run]  \u628A\u5C08\u6848\u5C0D\u9F4A\u5230 manifest \u7684\u6846\u67B6\u7248\u672C\uFF08pubspec / .fvmrc / package.json\uFF0C\u4E26\u66F4\u65B0 lock\uFF09
 
 \u901A\u7528\u65D7\u6A19\uFF08dev / seed / build\uFF09\uFF1A-e <\u74B0\u5883\u540D\u6216 env \u6A94>\uFF08\u7B49\u540C --env=\u2026\uFF09--x-env=<\u540D\u7A31> --flavor=<\u540D\u7A31>\uFF1B\u8A73\u898B\u5404\u6307\u4EE4\u8AAA\u660E\u3002
+
+release manifest\uFF08init / plugin create / doctor / upgrade \u6703\u8B80\uFF09\uFF1A--offline \u4E0D\u9023\u7DB2\uFF0C\u53EA\u7528\u672C\u6A5F\u5FEB\u53D6\u8207\u5167\u5EFA\u5FEB\u7167\uFF1B
+\u74B0\u5883\u8B8A\u6578 AQUTTER_MANIFEST_URL \u6216 aqutter.config.json \u7684 manifest.url \u53EF\u6539\u6210\u5225\u7684 https \u7DB2\u5740\u3002
 `;
 var main = async () => {
   const [command, ...rest] = process.argv.slice(2);

@@ -5,7 +5,9 @@
 // 重跑安全：已存在的檔案一律不覆寫（除非 --force）。
 //
 // 用法：aqutter init [--name=<snake_case>] [--org=<com.example>] [--display-name=<名稱>]
-//                    [--framework=nuxt|vite|next|custom] [--app-dir=<dir>] [--shell-path=<殼目錄>] [--shell-ref=<tag>] [--force]
+//                    [--framework=nuxt|vite|next|custom] [--app-dir=<dir>] [--shell-path=<殼目錄>] [--shell-ref=<ref>] [--offline] [--force]
+//   殼 ref 預設取 release manifest 的 channels.stable（--shell-ref 或 --shell-path 時不查 manifest）；
+//   --offline 讓 manifest 只用本機快取，再退回內建快照。
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
@@ -14,6 +16,7 @@ import pkg from '../../package.json'
 import { CONFIG_FILE, DEFAULT_CONFIG, FRAMEWORKS } from '../config.ts'
 import type { AqutterConfig, Framework } from '../config.ts'
 import { parseArgs } from '../shared.ts'
+import { loadExpectedProfile } from './doctor.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
 
@@ -80,7 +83,7 @@ export const usePathDependency = (pubspec: string, shellPath: string): string =>
 }
 
 export const runInit = async (cwd: string, argv: string[]): Promise<void> => {
-  const { flags } = parseArgs(argv.filter(arg => arg !== '--force'))
+  const { flags } = parseArgs(argv.filter(arg => arg !== '--force' && arg !== '--offline'))
   const force = argv.includes('--force')
   const root = resolve(cwd)
 
@@ -109,7 +112,9 @@ export const runInit = async (cwd: string, argv: string[]): Promise<void> => {
   }
   const appDirName = flags['app-dir'] ?? DEFAULT_CONFIG.appDir
   const appDir = resolve(root, appDirName)
-  const shellRef = flags['shell-ref'] ?? pkg.version
+  // 殼 ref：明給 --shell-ref 就照用；--shell-path 會把殼依賴改成本機路徑，ref 只是佔位；其餘取 manifest 的 stable release
+  const shellRef = flags['shell-ref']
+    ?? (flags['shell-path'] ? pkg.version : (await loadExpectedProfile({ offline: argv.includes('--offline') })).expected.shellRef)
 
   const configFile = join(root, CONFIG_FILE)
   if (existsSync(configFile) && !force) {

@@ -28,8 +28,9 @@ export interface LockGitPackage {
 }
 
 export interface NpmSpec {
-  name: string
-  ref: string
+  name: (typeof NPM_PACKAGES)[number]
+  /** package.json 裡寫的依賴字串（任何形態）。 */
+  spec: string
 }
 
 export const SHELL_PACKAGE = 'aqutter'
@@ -206,9 +207,28 @@ export const rewriteFvmrc = (text: string | null, version: string): { text: stri
   return { text: `${JSON.stringify({ ...data, flutter: version }, null, 2)}\n`, changed: true }
 }
 
-const NPM_SPEC = /^github:Aqutter\/aqutter#([^&]+)&path:.*$/
+// 舊語法：子目錄安裝，只有 pnpm 支援。新語法：獨立 repo，四種套件管理器都能裝。
+const LEGACY_CLI_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/cli$/
+const CURRENT_CLI_SPEC = /^github:Aqutter\/aqutter-cli(#.+)?$/
+const CLIENT_GITHUB_SPEC = /^github:Aqutter\/aqutter#[^&]+&path:\/client$/
 
-/** package.json 裡 Aqutter 的 github 依賴（dependencies 與 devDependencies）。 */
+export type CliSpecKind = 'legacy' | 'current' | 'other'
+
+/** CLI 依賴字串屬於哪一種：舊的子目錄語法、現行的獨立 repo 語法，或其他（例如 npm 版本號）。 */
+export const classifyCliSpec = (spec: string): CliSpecKind => {
+  if (LEGACY_CLI_SPEC.test(spec)) {
+    return 'legacy'
+  }
+  return CURRENT_CLI_SPEC.test(spec) ? 'current' : 'other'
+}
+
+/** client 依賴是否為 `github:Aqutter/aqutter#<ref>&path:/client` 這種由框架 release 決定的寫法。 */
+export const isClientGithubSpec = (spec: string): boolean => CLIENT_GITHUB_SPEC.test(spec)
+
+/** 現行的 CLI 安裝字串（Q1：ref 取 CLI 自己的版本，對應同名 tag）。 */
+export const cliInstallSpec = (version: string): string => `github:Aqutter/aqutter-cli#${version}`
+
+/** package.json 裡 Aqutter 兩個套件的依賴字串（dependencies 與 devDependencies，任何形態）。 */
 export const readNpmSpecs = (text: string): NpmSpec[] => {
   let json: { dependencies?: Record<string, string>, devDependencies?: Record<string, string> }
   try {
@@ -220,30 +240,45 @@ export const readNpmSpecs = (text: string): NpmSpec[] => {
   const specs: NpmSpec[] = []
   for (const group of [json.dependencies, json.devDependencies]) {
     for (const name of NPM_PACKAGES) {
-      const match = NPM_SPEC.exec(group?.[name] ?? '')
-      if (match) {
-        specs.push({ name, ref: match[1] })
+      const spec = group?.[name]
+      if (typeof spec === 'string') {
+        specs.push({ name, spec })
       }
     }
   }
   return specs
 }
 
-/** 把 package.json 內 Aqutter 的 github 依賴 ref 改為 `ref`；以字串替換保留原有格式。 */
-export const rewritePackageJson = (text: string, ref: string): { text: string, changes: string[] } => {
-  const changes: string[] = []
-  const pattern = /("@aqutter\/aqutter(?:-cli)?"\s*:\s*"github:Aqutter\/aqutter#)([^&"]+)(&path:[^"]*")/g
-  const next = text.replace(pattern, (whole, head: string, current: string, tail: string) => {
-    if (current === ref) {
-      return whole
-    }
-    const name = /"(@aqutter\/[^"]+)"/.exec(head)?.[1] ?? ''
-    changes.push(`${name}: ${current} → ${ref}`)
-    return `${head}${ref}${tail}`
-  })
-  return { text: next, changes }
+export interface PackageJsonTarget {
+  /** manifest 的 `client.spec`。 */
+  clientSpec: string
+  /** 現行的 CLI 安裝字串（見 cliInstallSpec）。 */
+  cliSpec: string
 }
 
+/**
+ * 改寫 package.json 內 Aqutter 的依賴；以字串替換保留原有格式，只動需要動的值：
+ *   - client：是 `github:Aqutter/aqutter#…&path:/client` 形態時，改為 manifest 的 client spec
+ *   - CLI：是舊的子目錄語法時，改為新的獨立 repo 語法；已是新語法或其他形態（例如 npm 版本號）一律不動
+ */
+export const rewritePackageJson = (text: string, target: PackageJsonTarget): { text: string, changes: string[] } => {
+  const changes: string[] = []
+  const replaceValue = (name: string, decide: (current: string) => string | null): void => {
+    // 套件名只含字母、@、/、-，在 RegExp 中沒有特殊意義
+    const pattern = new RegExp(`("${name}"\\s*:\\s*")([^"]*)(")`, 'g')
+    text = text.replace(pattern, (whole, head: string, current: string, tail: string) => {
+      const next = decide(current)
+      if (next === null || next === current) {
+        return whole
+      }
+      changes.push(`${name}: ${current} → ${next}`)
+      return `${head}${next}${tail}`
+    })
+  }
+  replaceValue('@aqutter/aqutter', current => (isClientGithubSpec(current) ? target.clientSpec : null))
+  replaceValue('@aqutter/aqutter-cli', current => (classifyCliSpec(current) === 'legacy' ? target.cliSpec : null))
+  return { text, changes }
+}
 /** 讀 pubspec.lock 中 git 來源套件的 url / ref / resolved-ref。 */
 export const parseLock = (text: string): Record<string, LockGitPackage> => {
   const lines = splitLines(text)

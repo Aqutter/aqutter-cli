@@ -1,27 +1,29 @@
-// aqutter upgrade：把專案對齊到「這支 CLI 所代表的框架版本」。
+// aqutter upgrade：把專案對齊到 release manifest 所描述的框架版本（預設 channels.stable）。
 //
 // 會改的（只改需要改的那一行，保留格式）：
 //   - <appDir>/pubspec.yaml ：environment.sdk / environment.flutter、殼依賴的 git ref（path 依賴不動）
 //   - <appDir>/.fvmrc       ：Flutter 版本——只在專案已有這個檔案時才更新；FVM 是選配，不替專案建立
-//   - package.json          ：@aqutter/aqutter、@aqutter/aqutter-cli 的 github 依賴 ref
-// 然後在 App 目錄執行 `flutter pub upgrade aqutter aqutter_core`，讓 lock 跟上（開發階段 tag 會移動）。
+//   - package.json          ：@aqutter/aqutter 改為 manifest 的 client spec；@aqutter/aqutter-cli 若還是舊的
+//                              子目錄語法（`&path:/cli`，只有 pnpm 能裝）就改成新的獨立 repo 語法
+// 然後在 App 目錄執行 `flutter pub upgrade aqutter aqutter_core`，讓 lock 跟上。
 // 不會動 `aqutter init` 當初展開的原生檔案（android/、ios/、windows/…）與 lib/：這些是專案自己的。
 //
-// 升級流程：先把 package.json 的 CLI 依賴升到新版並安裝，再用新版 CLI 執行 `aqutter upgrade`。
-//
-// 用法：aqutter upgrade [--dry-run] [--skip-pub]
-//   --dry-run  : 只列出會改什麼，不寫檔、不執行 flutter
-//   --skip-pub : 只改檔案，不執行 flutter pub upgrade
+// 用法：aqutter upgrade [--to=<框架版本>] [--dry-run] [--skip-pub] [--offline]
+//   --to=<版本> : 指定框架版本（預設取 manifest 的 channels.stable）；已撤回（yanked）的版本會被拒絕
+//   --dry-run   : 只列出會改什麼，不寫檔、不執行 flutter
+//   --skip-pub  : 只改檔案，不執行 flutter pub upgrade
+//   --offline   : 不連網，manifest 只用本機快取，再退回內建快照
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import pkg from '../../package.json'
 import type { Project } from '../config.ts'
-import { IS_WIN } from '../shared.ts'
-import { LOCKED_PACKAGES, parsePubspec, rewriteFvmrc, rewritePackageJson, rewritePubspec } from '../versioning.ts'
+import { IS_WIN, parseArgs } from '../shared.ts'
+import { LOCKED_PACKAGES, cliInstallSpec, parsePubspec, rewriteFvmrc, rewritePackageJson, rewritePubspec } from '../versioning.ts'
 import { detectPackageManager, installCommandOf } from '../web.ts'
-import { expectedProfile } from './doctor.ts'
+import { loadExpectedProfile } from './doctor.ts'
 import type { ExpectedProfile } from './doctor.ts'
 
 const TAG = 'upgrade'
@@ -59,14 +61,22 @@ export const planUpgrade = (input: UpgradeInput, expected: ExpectedProfile): Upg
     shellRef: shellIsGit && !input.keepShellRef ? expected.shellRef : null,
   })
   const fvmrc = input.fvmrc === null ? null : (rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? 'invalid')
-  const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, expected.shellRef)
+  const packageJson = input.packageJson === null
+    ? null
+    : rewritePackageJson(input.packageJson, { clientSpec: expected.clientSpec, cliSpec: cliInstallSpec(pkg.version) })
   return { pubspec, fvmrc, packageJson, needsPubUpgrade: shellIsGit }
 }
 
 export const runUpgrade = async (project: Project, argv: string[]): Promise<void> => {
+  const booleans = ['--dry-run', '--skip-pub', '--offline']
   const dryRun = argv.includes('--dry-run')
   const skipPub = argv.includes('--skip-pub')
-  const expected = expectedProfile()
+  const { flags } = parseArgs(argv.filter(arg => !booleans.includes(arg)))
+  const { expected, source } = await loadExpectedProfile({
+    offline: argv.includes('--offline'),
+    projectConfig: project.config,
+    requested: flags.to,
+  })
 
   const pubspecFile = join(project.appDir, 'pubspec.yaml')
   const fvmrcFile = join(project.appDir, '.fvmrc')
@@ -87,7 +97,7 @@ export const runUpgrade = async (project: Project, argv: string[]): Promise<void
     expected,
   )
 
-  console.log(`[${TAG}] 對齊到 Flutter ${expected.flutterVersion}、殼 ref ${expected.shellRef}${dryRun ? '（dry-run，不寫檔）' : ''}`)
+  console.log(`[${TAG}] 對齊到框架版本 ${expected.version}（Flutter ${expected.flutterVersion}、殼 ${expected.shellRef.slice(0, 7)}；manifest 來源：${source}）${dryRun ? '（dry-run，不寫檔）' : ''}`)
 
   let changed = false
   const report = (file: string, changes: string[]): void => {

@@ -13,13 +13,13 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
-import pkg from '../../package.json'
 import { loadProject } from '../config.ts'
 import { IS_WIN, parseArgs } from '../shared.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
 import { PLUGIN_ID_PATTERN, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
 import { addArgs, detectPackageManager } from '../web.ts'
+import { loadExpectedProfile } from './doctor.ts'
 import type { PackageManager } from '../web.ts'
 import { usePathDependency } from './init.ts'
 
@@ -55,8 +55,11 @@ const readDependencyNames = (root: string): Set<string> => {
   return new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})])
 }
 
-const create = (cwd: string, argv: string[]): void => {
-  const { positional, flags } = parseArgs(argv)
+/** client 依賴字串 `github:Aqutter/aqutter#<ref>&path:/client` 裡的 ref。 */
+const clientRefOf = (spec: string): string | null => /#([^&]+)&path:\/client$/.exec(spec)?.[1] ?? null
+
+const create = async (cwd: string, argv: string[]): Promise<void> => {
+  const { positional, flags } = parseArgs(argv.filter(arg => arg !== '--offline'))
   const id = positional[0]
   if (!id || !PLUGIN_ID_PATTERN.test(id)) {
     return fail(`用法：aqutter plugin create <id>（id 為小寫字母開頭、僅含小寫字母 / 數字 / 連字號，例如 haptics）`)
@@ -66,14 +69,27 @@ const create = (cwd: string, argv: string[]): void => {
   if (existsSync(target)) {
     return fail(`${dirName} 已存在。`)
   }
+  // 殼與 client 的 ref：明給 --shell-ref 就照用；否則取 release manifest 的 stable release
+  let refs: { shellRef: string, clientRef: string }
+  if (flags['shell-ref'] !== undefined) {
+    refs = { shellRef: flags['shell-ref'], clientRef: flags['shell-ref'] }
+  }
+  else {
+    const { expected } = await loadExpectedProfile({ offline: argv.includes('--offline') })
+    const clientRef = clientRefOf(expected.clientSpec)
+    if (clientRef === null) {
+      return fail(`框架版本 ${expected.version} 的 client 不是 GitHub 依賴（${expected.clientSpec}），plugin create 還不支援；請用 --shell-ref 指定。`)
+    }
+    refs = { shellRef: expected.shellRef, clientRef }
+  }
   const variables: TemplateVariables = {
     id,
     idSnake: toSnake(id),
     className: toClassName(id),
     dartPackage: `aqutter_plugin_${toSnake(id)}`,
     npmName: flags['npm-name'] ?? `aqutter-plugin-${id}`,
-    shellRef: flags['shell-ref'] ?? pkg.version,
-    clientRef: flags['shell-ref'] ?? pkg.version,
+    shellRef: refs.shellRef,
+    clientRef: refs.clientRef,
   }
   const { written } = renderTree(join(findTemplateRoot(), 'plugin'), target, variables)
   if (flags['shell-path']) {
@@ -140,7 +156,7 @@ export const runPlugin = async (cwd: string, argv: string[]): Promise<void> => {
   const [sub, ...rest] = argv
   switch (sub) {
     case 'create':
-      return create(cwd, rest)
+      return await create(cwd, rest)
     case 'add':
       return add(cwd, rest)
     case 'remove':
