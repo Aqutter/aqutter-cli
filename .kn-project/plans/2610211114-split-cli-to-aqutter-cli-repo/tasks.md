@@ -3,10 +3,10 @@
 > 本檔只列 `Aqutter/aqutter-cli` 的工作項；他 repo 的工作以「需等待」引用。Open Questions 全部確認前不得開始 Phase 1。
 
 ## Phase 1 — 匯入程式碼與歷史
-- [ ] [aqutter-cli] 在 `Aqutter/aqutter` 的本機 clone（只讀，不改其內容）以 `git subtree split --prefix=cli` 從 `origin/main` 切出歷史到暫存分支
-- [ ] [aqutter-cli] 於工作分支以 `git merge --allow-unrelated-histories` 併入暫存分支，確認歷史完整（commit 數、抽查 `git log --follow`）
-- [ ] [aqutter-cli] 建立 `.gitignore`（new）與 `LICENSE`（new）
-- [ ] [aqutter-cli] `pnpm install`，跑 `pnpm typecheck`、`pnpm test`、`pnpm build`，確認匯入後與原本一致（已知基準：`template packaging` 有 1 項在 Windows 上既有失敗，與本計畫無關）
+- [x] [aqutter-cli] 在 `Aqutter/aqutter` 的本機 clone（只讀，不改其內容）以 `git subtree split --prefix=cli` 從 `origin/main` 切出歷史到暫存分支
+- [x] [aqutter-cli] 於工作分支以 `git merge --allow-unrelated-histories` 併入暫存分支，確認歷史完整（commit 數、抽查 `git log --follow`）
+- [x] [aqutter-cli] 建立 `.gitignore`（new）與 `LICENSE`（new）
+- [x] [aqutter-cli] `pnpm install`，跑 `pnpm typecheck`、`pnpm test`、`pnpm build`，確認匯入後與原本一致（已知基準：`template packaging` 有 1 項在 Windows 上既有失敗，與本計畫無關）
 
 ## Phase 2 — 自足與安裝
 - [ ] [aqutter-cli] 補 `package.json:2` 附近的 `repository`、`bugs`、`homepage`；建立 `README.md`（new），列出四種套件管理器的安裝指令
