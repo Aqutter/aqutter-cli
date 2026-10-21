@@ -1,0 +1,12 @@
+window.WIKI_MANIFEST={
+"title":"aqutter-cli",
+"repoUrl":"https://github.com/Aqutter/aqutter-cli",
+"repoBranch":"main",
+"appflow":null,
+"pages":[
+"index.md",
+"dev/verification.md",
+"platform/architecture.md",
+"platform/manifest.md",
+]
+};

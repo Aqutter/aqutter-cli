@@ -1,0 +1,80 @@
+name: ci
+
+# Type check, tests, dist/ in sync with the sources, and the embedded templates
+# matching the release manifest snapshot (Flutter baseline and Dart sdk).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - name: Build and make sure dist/ is committed in sync
+        run: |
+          pnpm build
+          git diff --exit-code -- dist
+
+      - name: Templates match the manifest snapshot
+        run: |
+          node --input-type=module - <<'JS'
+          import { readFileSync } from 'node:fs'
+
+          const snapshot = JSON.parse(readFileSync('src/manifestSnapshot.json', 'utf8'))
+          const release = snapshot.releases[snapshot.channels.stable]
+          const errors = []
+
+          /** environment 區塊內某個鍵的值（去掉引號與行尾註解），找不到回 null。 */
+          const environmentValue = (text, key) => {
+            const lines = text.split(/\r?\n/)
+            const start = lines.findIndex((line) => /^environment:\s*$/.test(line))
+            if (start === -1) {
+              return null
+            }
+            for (let i = start + 1; i < lines.length && (lines[i].trim() === '' || /^ /.test(lines[i])); i += 1) {
+              const match = new RegExp(`^ {2}${key}:\\s*(.+?)\\s*$`).exec(lines[i])
+              if (match) {
+                return match[1].replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2')
+              }
+            }
+            return null
+          }
+
+          for (const file of ['template/app/pubspec.yaml', 'template/plugin/pubspec.yaml']) {
+            const text = readFileSync(file, 'utf8')
+            const flutter = /^>=(\d+\.\d+\.\d+)/.exec(environmentValue(text, 'flutter') ?? '')?.[1] ?? null
+            if (flutter !== release.flutter.baseline) {
+              errors.push(`${file}: environment.flutter lower bound is ${flutter}, manifest baseline is ${release.flutter.baseline}`)
+            }
+            if (environmentValue(text, 'sdk') !== release.dart) {
+              errors.push(`${file}: environment.sdk is ${environmentValue(text, 'sdk')}, manifest dart is ${release.dart}`)
+            }
+          }
+
+          if (errors.length > 0) {
+            console.error(errors.map((error) => `  - ${error}`).join('\n'))
+            process.exit(1)
+          }
+          console.log(`templates match the manifest (Flutter >=${release.flutter.baseline}, sdk ${release.dart})`)
+          JS
