@@ -906,7 +906,7 @@ var init_versioning = __esm({
               const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo);
               if (ref !== -1) {
                 const current = valueOf(lines[ref]);
-                if (current !== target.shellRef) {
+                if (current !== target.shellRef && current !== target.shellTag) {
                   lines[ref] = `      ref: ${target.shellRef}`;
                   changes.push(`${SHELL_PACKAGE} ref: ${current} \u2192 ${target.shellRef}`);
                 }
@@ -1139,6 +1139,8 @@ var init_doctor = __esm({
           add2({ level: "ok", title: `\u6BBC\u4F9D\u8CF4\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF08${pubspec.shell.path}\uFF09\uFF0C\u7565\u904E ref \u6AA2\u67E5` });
         } else if (pubspec.shell.ref === expected.shellRef) {
           add2({ level: "ok", title: `\u6BBC ref ${short(pubspec.shell.ref)}` });
+        } else if (pubspec.shell.ref === expected.version) {
+          add2({ level: "ok", title: `\u6BBC ref ${pubspec.shell.ref}\uFF08\u6846\u67B6\u7248\u672C tag\uFF09` });
         } else {
           add2({
             level: "warn",
@@ -1457,7 +1459,7 @@ ${missing.join("\n")}
       }
       const appDirName = flags["app-dir"] ?? DEFAULT_CONFIG.appDir;
       const appDir = resolve3(root, appDirName);
-      const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile({ offline: argv.includes("--offline") })).expected.shellRef);
+      const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile({ offline: argv.includes("--offline") })).expected.version);
       const configFile = join6(root, CONFIG_FILE);
       if (existsSync5(configFile) && !force) {
         fail(`${CONFIG_FILE} \u5DF2\u5B58\u5728\u3002\u8981\u91CD\u65B0\u5C55\u958B\u8ACB\u52A0 --force\u3002`);
@@ -1846,7 +1848,7 @@ var init_plugin = __esm({
         if (clientRef === null) {
           return fail2(`\u6846\u67B6\u7248\u672C ${expected.version} \u7684 client \u4E0D\u662F GitHub \u4F9D\u8CF4\uFF08${expected.clientSpec}\uFF09\uFF0Cplugin create \u9084\u4E0D\u652F\u63F4\uFF1B\u8ACB\u7528 --shell-ref \u6307\u5B9A\u3002`);
         }
-        refs = { shellRef: expected.shellRef, clientRef };
+        refs = { shellRef: expected.version, clientRef };
       }
       const variables = {
         id,
@@ -4072,7 +4074,8 @@ var init_upgrade = __esm({
       const pubspec = rewritePubspec(input.pubspec, {
         sdk: expected.sdk,
         flutter: expected.flutter,
-        shellRef: shellIsGit && !input.keepShellRef ? expected.shellRef : null
+        shellRef: shellIsGit && !input.keepShellRef ? expected.shellRef : null,
+        shellTag: expected.version
       });
       const fvmrc = input.fvmrc === null ? null : rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? "invalid";
       const packageJson = input.packageJson === null ? null : rewritePackageJson(input.packageJson, { clientSpec: expected.clientSpec, cliSpec: cliInstallSpec(package_default.version) });

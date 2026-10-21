@@ -157,6 +157,10 @@ export const diagnose = (facts: Facts): Finding[] => {
     else if (pubspec.shell.ref === expected.shellRef) {
       add({ level: 'ok', title: `殼 ref ${short(pubspec.shell.ref)}` })
     }
+    // 開發階段允許寫框架版本的 tag（例如 0.0.0）：tag 會隨 main 移動，App 與 plugin 的殼 ref 字串必須完全相同
+    else if (pubspec.shell.ref === expected.version) {
+      add({ level: 'ok', title: `殼 ref ${pubspec.shell.ref}（框架版本 tag）` })
+    }
     else {
       add({
         level: 'warn',

@@ -113,6 +113,12 @@ describe('rewritePubspec', () => {
     expect(text).toContain('ref: 0.0.0')
   })
 
+  it('keeps a shell ref that is the framework version tag', () => {
+    const { text, changes } = rewritePubspec(OLD_PUBSPEC, { ...target, shellTag: '0.0.0' })
+    expect(changes.some(change => change.startsWith('aqutter ref'))).toBe(false)
+    expect(text).toContain('ref: 0.0.0')
+  })
+
   it('adds a missing environment.flutter after the last entry', () => {
     const { text } = rewritePubspec('environment:\n  sdk: \'>=3.13.0 <4.0.0\'\n\ndependencies:\n  flutter:\n    sdk: flutter\n', target)
     expect(text).toContain('environment:\n  sdk: \'>=3.13.0 <4.0.0\'\n  flutter: \'>=3.47.4\'\n')
@@ -290,6 +296,11 @@ const levels = (facts: Facts): string[] => diagnose(facts).filter(f => f.level !
 describe('diagnose', () => {
   it('reports no problems for an up-to-date project', () => {
     expect(levels(goodFacts())).toEqual([])
+  })
+
+  it('accepts a shell ref that is the framework version tag', () => {
+    const found = levels({ ...goodFacts(), expected: { ...EXPECTED, version: '0.0.0' }, pubspec: parsePubspec(OLD_PUBSPEC.replace("'>=3.47.0'", "'>=3.47.4'")) })
+    expect(found.some(line => line.includes('殼 ref'))).toBe(false)
   })
 
   it('errors when Flutter is missing or outside the allowed range', () => {

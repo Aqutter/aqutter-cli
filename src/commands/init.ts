@@ -112,9 +112,9 @@ export const runInit = async (cwd: string, argv: string[]): Promise<void> => {
   }
   const appDirName = flags['app-dir'] ?? DEFAULT_CONFIG.appDir
   const appDir = resolve(root, appDirName)
-  // 殼 ref：明給 --shell-ref 就照用；--shell-path 會把殼依賴改成本機路徑，ref 只是佔位；其餘取 manifest 的 stable release
+  // 殼 ref：明給 --shell-ref 就照用；--shell-path 會把殼依賴改成本機路徑，ref 只是佔位；其餘取 manifest 的 stable release 的版本 tag（開發階段 tag 隨 main 移動，App 與 plugin 的殼 ref 必須同字串）
   const shellRef = flags['shell-ref']
-    ?? (flags['shell-path'] ? pkg.version : (await loadExpectedProfile({ offline: argv.includes('--offline') })).expected.shellRef)
+    ?? (flags['shell-path'] ? pkg.version : (await loadExpectedProfile({ offline: argv.includes('--offline') })).expected.version)
 
   const configFile = join(root, CONFIG_FILE)
   if (existsSync(configFile) && !force) {

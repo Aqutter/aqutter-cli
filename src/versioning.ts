@@ -114,6 +114,8 @@ export interface PubspecTarget {
   flutter: string
   /** null 表示不動殼的 ref（例如 path 依賴）。 */
   shellRef: string | null
+  /** 框架版本的 tag（例如 `0.0.0`）：目前的 ref 若等於它就視為已對齊，不改寫成 commit。 */
+  shellTag?: string
 }
 
 /** 把 pubspec 改到目標版本；回傳新內容與實際改了哪些項目（沒變就不會列出）。 */
@@ -163,7 +165,7 @@ export const rewritePubspec = (text: string, target: PubspecTarget): { text: str
           const ref = findLine(lines, /^ {6}ref:/, gFrom, gTo)
           if (ref !== -1) {
             const current = valueOf(lines[ref])
-            if (current !== target.shellRef) {
+            if (current !== target.shellRef && current !== target.shellTag) {
               lines[ref] = `      ref: ${target.shellRef}`
               changes.push(`${SHELL_PACKAGE} ref: ${current} → ${target.shellRef}`)
             }

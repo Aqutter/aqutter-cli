@@ -59,6 +59,7 @@ export const planUpgrade = (input: UpgradeInput, expected: ExpectedProfile): Upg
     sdk: expected.sdk,
     flutter: expected.flutter,
     shellRef: shellIsGit && !input.keepShellRef ? expected.shellRef : null,
+    shellTag: expected.version,
   })
   const fvmrc = input.fvmrc === null ? null : (rewriteFvmrc(input.fvmrc, expected.flutterVersion) ?? 'invalid')
   const packageJson = input.packageJson === null

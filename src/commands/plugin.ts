@@ -80,7 +80,7 @@ const create = async (cwd: string, argv: string[]): Promise<void> => {
     if (clientRef === null) {
       return fail(`框架版本 ${expected.version} 的 client 不是 GitHub 依賴（${expected.clientSpec}），plugin create 還不支援；請用 --shell-ref 指定。`)
     }
-    refs = { shellRef: expected.shellRef, clientRef }
+    refs = { shellRef: expected.version, clientRef }
   }
   const variables: TemplateVariables = {
     id,
