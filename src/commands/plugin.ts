@@ -55,8 +55,8 @@ const readDependencyNames = (root: string): Set<string> => {
   return new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})])
 }
 
-/** client 依賴字串 `github:Aqutter/aqutter#<ref>&path:/client` 裡的 ref。 */
-const clientRefOf = (spec: string): string | null => /#([^&]+)&path:\/client$/.exec(spec)?.[1] ?? null
+/** client 依賴字串 `github:Aqutter/aqutter-js#<ref>` 裡的 ref。 */
+const clientRefOf = (spec: string): string | null => /^github:Aqutter\/aqutter-js#([^&\s]+)$/.exec(spec)?.[1] ?? null
 
 const create = async (cwd: string, argv: string[]): Promise<void> => {
   const { positional, flags } = parseArgs(argv.filter(arg => arg !== '--offline'))

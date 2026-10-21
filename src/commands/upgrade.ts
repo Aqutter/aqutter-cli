@@ -3,7 +3,7 @@
 // 會改的（只改需要改的那一行，保留格式）：
 //   - <appDir>/pubspec.yaml ：environment.sdk / environment.flutter、殼依賴的 git ref（path 依賴不動）
 //   - <appDir>/.fvmrc       ：Flutter 版本——只在專案已有這個檔案時才更新；FVM 是選配，不替專案建立
-//   - package.json          ：@aqutter/aqutter 改為 manifest 的 client spec；@aqutter/aqutter-cli 若還是舊的
+//   - package.json          ：@aqutter/aqutter 若是 github:Aqutter/aqutter-js 形態就改為 manifest 的 client spec；@aqutter/aqutter-cli 若還是舊的
 //                              子目錄語法（`&path:/cli`，只有 pnpm 能裝）就改成新的獨立 repo 語法
 // 然後在 App 目錄執行 `flutter pub upgrade aqutter aqutter_core`，讓 lock 跟上。
 // 不會動 `aqutter init` 當初展開的原生檔案（android/、ios/、windows/…）與 lib/：這些是專案自己的。
