@@ -30,5 +30,5 @@
 - [x] [aqutter-cli] 建立 `.github/workflows/ci.yml`（new）：型別檢查、測試、`dist/` 與原始碼同步、範本的 Flutter 約束與 manifest 的 `flutter.baseline` 一致
 - [x] [aqutter-cli] 程式碼匯入後初始化 wiki（`kn-project-wikification`）
 - [ ] [aqutter-cli] 推送工作分支後，用 GitHub 網址（`github:Aqutter/aqutter-cli#<分支>`）以 npm、yarn、pnpm 各安裝一次並執行 `aqutter --version`（補驗 yarn）
-- [ ] [aqutter-cli] 全部驗證：`pnpm typecheck`、`pnpm test`、`pnpm build`、`dist/` 同步、`wiki-lint` 硬閘 0 項
+- [x] [aqutter-cli] 全部驗證（本機）：`pnpm typecheck`、`pnpm test`、`pnpm build`、`dist/` 同步、`wiki-lint` 硬閘 0 項
 - [ ] [aqutter-cli] 產出下游交接：新安裝網址與 ref，供 `aqutter-nuxt-app` 的計畫使用　需等待 [aqutter-nuxt-app]：其計畫開始
