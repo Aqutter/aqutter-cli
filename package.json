@@ -4,6 +4,14 @@
   "description": "Aqutter CLI：把既有網頁專案接上 Aqutter 殼，提供 dev / build / seed / flavor / 簽章 等指令。",
   "type": "module",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/Aqutter/aqutter-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aqutter/aqutter-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Aqutter/aqutter-cli/issues"
+  },
   "bin": {
     "aqutter": "./dist/aqutter.mjs"
   },
