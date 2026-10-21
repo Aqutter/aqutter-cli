@@ -50,4 +50,4 @@ appFlow: false
 
 只記併回主幹，發佈狀態以 GitHub Release 為準。
 
-（尚無）
+0.0.0 — 併回主幹 2026-10-21（接手 `Aqutter/aqutter` 的 `cli/`：匯入程式碼與歷史、npm／yarn／pnpm 皆可安裝、改讀 release manifest）
