@@ -22,13 +22,15 @@
 - [x] [aqutter-cli] 改 `src/commands/doctor.ts:46-52` 取 `flutter.baseline`、`dart`，lock 比對改用 sha
 - [x] [aqutter-cli] 改 `src/commands/upgrade.ts`、`src/versioning.ts:209`、`:235`：目標取 manifest、舊依賴語法改寫為新語法，並補測試
 - [x] [aqutter-cli] 更新 `src/main.ts:2-4` 的說明文字（`--offline`、`AQUTTER_MANIFEST_URL`）
-- [ ] [aqutter-cli] 端到端驗證：以 raw 網址取得 manifest，對真實專案跑 `doctor`、`upgrade --dry-run`　需等待 [aqutter]：manifest 合併到 `main`
+- [x] [aqutter-cli] 端到端驗證：以 raw 網址取得 manifest，對真實專案跑 `doctor`、`upgrade --dry-run`　需等待 [aqutter]：manifest 合併到 `main`
   - 已完成（用內建快照）：對 `aqutter-nuxt-app` 跑 `doctor --offline` 與 `upgrade --dry-run --offline`，找出 3 項該遷移的依賴（殼 ref、client、CLI 舊語法），lock 與 manifest 的 sha 一致，dry-run 不改檔。
-  - 待完成：改用 raw 網址（`AQUTTER_MANIFEST_URL` 或預設網址）實際下載
+  - 已完成（raw 網址）：`aqutter` 的 PR 合併後，不加 `--offline` 對同一專案跑 `doctor`、`upgrade --dry-run`，manifest 來源為 `network`，第二次為 `cache`，結果與快照一致。
 
 ## Phase 5 — CI、wiki 與驗證
 - [x] [aqutter-cli] 建立 `.github/workflows/ci.yml`（new）：型別檢查、測試、`dist/` 與原始碼同步、範本的 Flutter 約束與 manifest 的 `flutter.baseline` 一致
 - [x] [aqutter-cli] 程式碼匯入後初始化 wiki（`kn-project-wikification`）
-- [ ] [aqutter-cli] 推送工作分支後，用 GitHub 網址（`github:Aqutter/aqutter-cli#<分支>`）以 npm、yarn、pnpm 各安裝一次並執行 `aqutter --version`（補驗 yarn）
+- [x] [aqutter-cli] 推送工作分支後，用 GitHub 網址（`github:Aqutter/aqutter-cli#<分支>`）以 npm、yarn、pnpm 各安裝一次並執行 `aqutter --version`（補驗 yarn）
 - [x] [aqutter-cli] 全部驗證（本機）：`pnpm typecheck`、`pnpm test`、`pnpm build`、`dist/` 同步、`wiki-lint` 硬閘 0 項
-- [ ] [aqutter-cli] 產出下游交接：新安裝網址與 ref，供 `aqutter-nuxt-app` 的計畫使用　需等待 [aqutter-nuxt-app]：其計畫開始
+- [x] [aqutter-cli] 產出下游交接：新安裝網址與 ref，供 `aqutter-nuxt-app` 的計畫使用　需等待 [aqutter-nuxt-app]：其計畫開始
+  - 推送後驗證結果：以 `github:Aqutter/aqutter-cli#feature/2610211114-split-cli-to-aqutter-cli-repo` 安裝，npm、yarn、pnpm 都成功並能執行 `aqutter --version`（先前 yarn 的本機網址失敗只是 `git+file` 的限制）。bun 仍待人工驗證。
+  - 交接給 `aqutter-nuxt-app` 的資訊：安裝字串 `github:Aqutter/aqutter-cli#0.0.0`（tag 於 Merge PR 併回 `main` 後建立，見 Manual Follow-ups）；`aqutter upgrade` 會把舊的 `&path:/cli` 依賴改寫為這個字串。

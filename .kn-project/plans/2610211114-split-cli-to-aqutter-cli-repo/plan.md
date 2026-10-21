@@ -5,8 +5,8 @@
 - Issue: Aqutter/aqutter-cli#1
 - Milestone: 0.0.0
 - Base Branch: release/0.0.0
-- Status: In Progress
-- Completed: [Wait for Finish]
+- Status: Awaiting Archive
+- Completed: 2026-10-21
 
 ## Goals
 1. 把 `Aqutter/aqutter` 的 `cli/` 連同 git 歷史匯入本 repo，讓本 repo 自足（`.gitignore`、`LICENSE`、`README`、套件的 repository 欄位）。
@@ -170,6 +170,8 @@ CLI 內建預設的 manifest 網址，可被環境變數 `AQUTTER_MANIFEST_URL` 
 ## Manual Follow-ups / 人工收尾事項
 - **[合併前]** 在有 bun 的環境驗證 `github:Aqutter/aqutter-cli#<ref>` 可安裝並執行 `aqutter --version` — 在該環境執行 `bun add -d "github:Aqutter/aqutter-cli#<ref>"` 後 `bunx aqutter --version` — agent 的環境沒有 bun，無法代測
 - **[合併時]** 合併本計畫的 PR 與之後的 Merge PR（`release/0.0.0` → `main`）時選「Create a merge commit」，不要 squash 或 rebase — 在 GitHub 的 PR 頁面選擇合併方式 — 匯入的歷史靠合併 commit 保留，squash 會壓平；合併方式是 PR 頁面上的人為選擇，agent 不代按
+- **[合併後]** 確認本 repo 的 CI 在 PR 與 `main` 上通過 — 到 GitHub 的 Actions 頁面（`Aqutter/aqutter-cli` → Actions → ci）檢視；失敗請回報 — workflow 要推送後才會執行，agent 在 PR 開出前無法驗證它在 GitHub 上的實際結果（已知風險：`template packaging` 測試在 Windows 上有一項既有失敗，在 Linux 的 CI 上預期通過但尚未驗證）
+- **[合併後]** Merge PR（`release/0.0.0` → `main`）合併後，在 `main` 建立並推送 tag `0.0.0` — `git tag 0.0.0 <main 的 commit>` 然後 `git push origin 0.0.0` — 安裝網址 `github:Aqutter/aqutter-cli#0.0.0` 在 tag 存在前無法使用；tag 是對外動作，且須在合併完成、知道 `main` 的 commit 之後才能建立
 
 ## Key Decisions
 - **[Phase 0]** 目標 repo 為 `Aqutter/aqutter-cli`（依據：`Aqutter/aqutter` 同名計畫的 Cross-Repo Scope 宣告）。使用者核准建立此 repo（公開、空的、issues 啟用），並選擇「只建立空的 repo」，歷史匯入由本計畫執行。
