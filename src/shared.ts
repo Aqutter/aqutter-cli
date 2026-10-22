@@ -115,6 +115,50 @@ export const isPortInUse = async (port: number): Promise<boolean> => {
   return results.some(Boolean)
 }
 
+export interface WaitForHttpOptions {
+  timeoutMs: number
+  intervalMs: number
+  /** 注入點（測試用）；預設為全域 fetch。 */
+  fetchFn?: (url: string) => Promise<{ status: number }>
+  sleepFn?: (ms: number) => Promise<void>
+  now?: () => number
+  /** 每次探測失敗後呼叫（顯示等待中用）。 */
+  onWait?: (waitedMs: number) => void
+}
+
+/**
+ * 等網頁 dev server 就緒：任一網址回應「非 5xx」即視為就緒（200 與 404 都算——伺服器已經在回應；
+ * 5xx 是 Nuxt 還在編譯或重啟，連線被拒是還沒開始監聽），逾時回 false。
+ *
+ * 就緒才啟動 Flutter，殼才不會在 dev server 還沒好時拿到 5xx 而顯示啟動失敗。
+ * 這個請求同時會讓 dev server 先編譯首頁，等於替 App 暖機。
+ */
+export const waitForHttpReady = async (urls: string[], options: WaitForHttpOptions): Promise<boolean> => {
+  const fetchFn = options.fetchFn ?? (async (url: string) => fetch(url, { signal: AbortSignal.timeout(Math.max(options.intervalMs * 4, 2000)) }))
+  const sleepFn = options.sleepFn ?? (async (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  const now = options.now ?? Date.now
+  const started = now()
+  for (;;) {
+    for (const url of urls) {
+      try {
+        const response = await fetchFn(url)
+        if (response.status < 500) {
+          return true
+        }
+      }
+      catch {
+        // 連線被拒或逾時：還沒好
+      }
+    }
+    const waited = now() - started
+    if (waited >= options.timeoutMs) {
+      return false
+    }
+    options.onWait?.(waited)
+    await sleepFn(options.intervalMs)
+  }
+}
+
 /**
  * 確保種子目錄存在（空目錄即可）。
  * App 的 pubspec 以目錄形式宣告 `assets/seed/`，該目錄缺席時 flutter 會在資源打包階段直接失敗；
