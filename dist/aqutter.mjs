@@ -225,7 +225,7 @@ import { existsSync as existsSync2, lstatSync, mkdirSync, readFileSync as readFi
 import { connect } from "node:net";
 import { basename, join as join2 } from "node:path";
 import readline from "node:readline";
-var MIN_PORT, MAX_PORT, IS_WIN, SHORT_FLAGS, parseArgs, resolvePort, PORT_PROBE_TIMEOUT_MS, isPortInUse, ensureSeedDir, StepFailure, createStep, resolveEnvFile, envNameOf, readAppVersion, ENTRY_KIND, walk, collectFiles, collectEntries, MASK_CHAR, PASSTHROUGH_PREFIXES, isTerminalControl, createPrompter;
+var MIN_PORT, MAX_PORT, IS_WIN, SHORT_FLAGS, parseArgs, resolvePort, PORT_PROBE_TIMEOUT_MS, isPortInUse, waitForHttpReady, ensureSeedDir, StepFailure, createStep, resolveEnvFile, envNameOf, readAppVersion, ENTRY_KIND, walk, collectFiles, collectEntries, MASK_CHAR, PASSTHROUGH_PREFIXES, isTerminalControl, createPrompter;
 var init_shared = __esm({
   "src/shared.ts"() {
     "use strict";
@@ -293,6 +293,29 @@ var init_shared = __esm({
       });
       const results = await Promise.all([probe("127.0.0.1"), probe("::1")]);
       return results.some(Boolean);
+    };
+    waitForHttpReady = async (urls, options) => {
+      const fetchFn = options.fetchFn ?? (async (url) => fetch(url, { signal: AbortSignal.timeout(Math.max(options.intervalMs * 4, 2e3)) }));
+      const sleepFn = options.sleepFn ?? (async (ms) => new Promise((resolve5) => setTimeout(resolve5, ms)));
+      const now = options.now ?? Date.now;
+      const started = now();
+      for (; ; ) {
+        for (const url of urls) {
+          try {
+            const response = await fetchFn(url);
+            if (response.status < 500) {
+              return true;
+            }
+          } catch {
+          }
+        }
+        const waited = now() - started;
+        if (waited >= options.timeoutMs) {
+          return false;
+        }
+        options.onWait?.(waited);
+        await sleepFn(options.intervalMs);
+      }
     };
     ensureSeedDir = (project) => {
       mkdirSync(project.seedDir, { recursive: true });
@@ -2143,7 +2166,7 @@ import { spawn, spawnSync as spawnSync4 } from "node:child_process";
 import { existsSync as existsSync11 } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join as join12 } from "node:path";
-var TAG4, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
+var TAG4, DEV_SERVER_WAIT_MS, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
 var init_dev = __esm({
   "src/commands/dev.ts"() {
     "use strict";
@@ -2152,6 +2175,7 @@ var init_dev = __esm({
     init_menu();
     init_web();
     TAG4 = "flutter:dev";
+    DEV_SERVER_WAIT_MS = 18e4;
     fail3 = (message) => {
       console.error(`[${TAG4}] ${message}`);
       process.exit(1);
@@ -2558,6 +2582,21 @@ var init_dev = __esm({
         }
       });
       ensureSeedDir(project);
+      let lastNotice = 0;
+      const ready = await waitForHttpReady([`http://localhost:${port}/`, `http://127.0.0.1:${port}/`], {
+        timeoutMs: DEV_SERVER_WAIT_MS,
+        intervalMs: 500,
+        onWait: (waited) => {
+          if (waited - lastNotice >= 5e3) {
+            lastNotice = waited;
+            console.log(`[${TAG4}] \u7B49\u5F85\u7DB2\u9801 dev server \u5C31\u7DD2\u2026\uFF08${Math.round(waited / 1e3)}s\uFF09`);
+          }
+        }
+      });
+      if (!ready) {
+        console.error(`[${TAG4}] \u7B49\u4E86 ${DEV_SERVER_WAIT_MS / 1e3}s\uFF0C\u7DB2\u9801 dev server \u4ECD\u672A\u56DE\u61C9\uFF08http://localhost:${port}/\uFF09\u3002\u8ACB\u770B\u4E0A\u65B9 dev server \u7684\u8F38\u51FA\u3002`);
+        shutdown(1);
+      }
       const flutterArgs = [
         "run",
         "-d",

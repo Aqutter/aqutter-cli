@@ -26,13 +26,16 @@ import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 
 import type { Project } from '../config.ts'
-import { IS_WIN, createPrompter, ensureSeedDir, isPortInUse, parseArgs, resolvePort } from '../shared.ts'
+import { IS_WIN, createPrompter, ensureSeedDir, isPortInUse, parseArgs, resolvePort, waitForHttpReady } from '../shared.ts'
 import { resolveEnvironment } from '../environments.ts'
 import type { Prompter } from '../shared.ts'
 import { chooseOne, listEnvFiles, listFlavors, resolveXEnv } from '../menu.ts'
 import { createWebAdapter } from '../web.ts'
 
 const TAG = 'flutter:dev'
+
+/** 等網頁 dev server 就緒的上限。第一次啟動要編譯並預先打包依賴，寧可高不可低。 */
+const DEV_SERVER_WAIT_MS = 180_000
 
 const fail = (message: string): never => {
   console.error(`[${TAG}] ${message}`)
@@ -579,6 +582,24 @@ export const runDev = async (project: Project, argv: string[]): Promise<void> =>
 
   // dev 走 dev server、不讀種子內容，但 pubspec 仍宣告該資源目錄；目錄缺席會讓 flutter 在資源打包階段失敗。
   ensureSeedDir(project)
+
+  // 等網頁 dev server 就緒再啟動 Flutter：兩者同時啟動時，殼可能先起來而拿到 5xx（dev server 還在編譯），
+  // 在 dev 模式會直接顯示啟動失敗。從開發機本機探測，不受 DEV_HOST / adb reverse 影響。
+  let lastNotice = 0
+  const ready = await waitForHttpReady([`http://localhost:${port}/`, `http://127.0.0.1:${port}/`], {
+    timeoutMs: DEV_SERVER_WAIT_MS,
+    intervalMs: 500,
+    onWait: (waited) => {
+      if (waited - lastNotice >= 5000) {
+        lastNotice = waited
+        console.log(`[${TAG}] 等待網頁 dev server 就緒…（${Math.round(waited / 1000)}s）`)
+      }
+    },
+  })
+  if (!ready) {
+    console.error(`[${TAG}] 等了 ${DEV_SERVER_WAIT_MS / 1000}s，網頁 dev server 仍未回應（http://localhost:${port}/）。請看上方 dev server 的輸出。`)
+    shutdown(1)
+  }
 
   // Flutter run（同一 env 檔；AQUTTER_DEV_URL 以 CLI 覆蓋 file 值）
   const flutterArgs = [
