@@ -7,7 +7,7 @@
 // 用法：aqutter init [--name=<snake_case>] [--org=<com.example>] [--display-name=<名稱>]
 //                    [--framework=nuxt|vite|next|custom] [--app-dir=<dir>] [--shell-path=<殼目錄>] [--shell-ref=<ref>] [--offline] [--force]
 //   殼 ref 預設取 release manifest 的 channels.stable（--shell-ref 或 --shell-path 時不查 manifest）；
-//   --offline 讓 manifest 只用本機快取，再退回內建快照。
+//   --offline 讓 manifest 只用本機快取，再退回內建快照；--refresh 略過快取有效期強制連網（兩者互斥）。
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
@@ -16,6 +16,7 @@ import pkg from '../../package.json'
 import { CONFIG_FILE, DEFAULT_CONFIG, FRAMEWORKS } from '../config.ts'
 import type { AqutterConfig, Framework } from '../config.ts'
 import { parseArgs } from '../shared.ts'
+import { readManifestFlags } from '../manifest.ts'
 import { loadExpectedProfile } from './doctor.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
@@ -83,7 +84,7 @@ export const usePathDependency = (pubspec: string, shellPath: string): string =>
 }
 
 export const runInit = async (cwd: string, argv: string[]): Promise<void> => {
-  const { flags } = parseArgs(argv.filter(arg => arg !== '--force' && arg !== '--offline'))
+  const { flags } = parseArgs(argv.filter(arg => arg !== '--force' && arg !== '--offline' && arg !== '--refresh'))
   const force = argv.includes('--force')
   const root = resolve(cwd)
 
@@ -114,7 +115,7 @@ export const runInit = async (cwd: string, argv: string[]): Promise<void> => {
   const appDir = resolve(root, appDirName)
   // 殼 ref：明給 --shell-ref 就照用；--shell-path 會把殼依賴改成本機路徑，ref 只是佔位；其餘取 manifest 的 stable release 的版本 tag（開發階段 tag 隨 main 移動，App 與 plugin 的殼 ref 必須同字串）
   const shellRef = flags['shell-ref']
-    ?? (flags['shell-path'] ? pkg.version : (await loadExpectedProfile({ offline: argv.includes('--offline') })).expected.version)
+    ?? (flags['shell-path'] ? pkg.version : (await loadExpectedProfile(readManifestFlags(argv))).expected.version)
 
   const configFile = join(root, CONFIG_FILE)
   if (existsSync(configFile) && !force) {

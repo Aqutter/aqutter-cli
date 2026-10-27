@@ -9,8 +9,9 @@
 //   5. <appDir>/pubspec.lock 鎖的 commit 是否與 release 記載的 commit 一致
 // 「框架版本」取自 release manifest 的 channels.stable（見 expectedProfile、src/manifest.ts）。
 //
-// 用法：aqutter doctor [--offline]
+// 用法：aqutter doctor [--offline | --refresh]
 //   --offline : 不連網，manifest 只用本機快取，再退回內建快照
+//   --refresh : 略過快取有效期，強制連網取得 manifest（與 --offline 互斥）
 // 結束碼：有「錯誤」才為 1；只有「警告」仍為 0。
 
 import { spawnSync } from 'node:child_process'
@@ -19,7 +20,7 @@ import { join } from 'node:path'
 
 import pkg from '../../package.json'
 import type { Project } from '../config.ts'
-import { assertCliSupports, compareVersions, loadConfiguredManifest, resolveRelease } from '../manifest.ts'
+import { assertCliSupports, compareVersions, describeSource, loadConfiguredManifest, readManifestFlags, resolveRelease } from '../manifest.ts'
 import type { ManifestRelease } from '../manifest.ts'
 import { IS_WIN } from '../shared.ts'
 import {
@@ -283,11 +284,11 @@ export const gatherFacts = (project: Project, expected: ExpectedProfile): Facts 
 const LABEL: Record<Level, string> = { ok: '[ok]  ', warn: '[警告]', error: '[錯誤]' }
 
 export const runDoctor = async (project: Project, argv: string[]): Promise<void> => {
-  const offline = argv.includes('--offline')
+  const { offline, refresh } = readManifestFlags(argv)
   console.log(`[${TAG}] 專案：${project.root}（CLI ${pkg.version}）`)
-  const loaded = await loadConfiguredManifest({ offline, projectConfig: project.config })
+  const loaded = await loadConfiguredManifest({ offline, refresh, projectConfig: project.config })
   const { version, release } = resolveRelease(loaded.manifest)
-  console.log(`[${TAG}] 框架版本：${version}（manifest 來源：${loaded.source}）`)
+  console.log(`[${TAG}] 框架版本：${version}（manifest 來源：${describeSource(loaded)}）`)
   const findings = diagnose(gatherFacts(project, expectedProfile(version, release)))
   for (const finding of findings) {
     console.log(`${LABEL[finding.level]} ${finding.title}`)
@@ -307,9 +308,9 @@ export const runDoctor = async (project: Project, argv: string[]): Promise<void>
 }
 
 // 供 upgrade 共用：載入 manifest、挑 release 並檢查 CLI 夠新。
-export const loadExpectedProfile = async (options: { offline: boolean, projectConfig?: unknown, requested?: string }): Promise<{ expected: ExpectedProfile, release: ManifestRelease, source: string }> => {
-  const loaded = await loadConfiguredManifest({ offline: options.offline, projectConfig: options.projectConfig })
+export const loadExpectedProfile = async (options: { offline: boolean, refresh?: boolean, projectConfig?: unknown, requested?: string }): Promise<{ expected: ExpectedProfile, release: ManifestRelease, source: string }> => {
+  const loaded = await loadConfiguredManifest({ offline: options.offline, refresh: options.refresh, projectConfig: options.projectConfig })
   const { version, release } = resolveRelease(loaded.manifest, options.requested)
   assertCliSupports(release, pkg.version)
-  return { expected: expectedProfile(version, release), release, source: loaded.source }
+  return { expected: expectedProfile(version, release), release, source: describeSource(loaded) }
 }

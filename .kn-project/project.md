@@ -22,6 +22,7 @@ Aqutter 框架的命令列工具：npm 套件 `@aqutter/aqutter-cli`，指令為
 ## 保留鐵則
 
 - **安裝方式**：以 `github:Aqutter/aqutter-cli#<ref>` 安裝，必須在 npm、yarn、bun、pnpm 都能用——這是拆分的主因；不得再使用只有 pnpm 支援的子目錄語法。
+- **manifest 快取與降級保護**：發佈清單快取 24 小時；`--refresh` 略過有效期強制連網（與 `--offline` 互斥），輸出標出快取年齡。`upgrade` 目標比現況舊（`environment.flutter`／`environment.sdk` 下限、`.fvmrc` 變低）時預設拒絕，`--allow-downgrade` 才放行——這是為了擋住「過期快取造成無聲降級」。
 - **`dist/` 必須與 `src/`、`template/` 同步提交**：使用者直接從 GitHub 安裝，沒有編譯步驟。
 - **設定驅動、框架中立**：CLI 不寫死任何網頁框架，框架差異只在網頁框架轉接器；其餘指令只認 `aqutter.config.json`。
 - **版本相容知識以 `Aqutter/aqutter` 的 release manifest 為準**（`manifest/releases.json`，契約 rev 1），CLI 不從其他地方推導；manifest 只能影響宣告式欄位，CLI 不得執行其中的任何指令。

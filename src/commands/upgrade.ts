@@ -8,11 +8,13 @@
 // 然後在 App 目錄執行 `flutter pub upgrade aqutter aqutter_core`，讓 lock 跟上。
 // 不會動 `aqutter init` 當初展開的原生檔案（android/、ios/、windows/…）與 lib/：這些是專案自己的。
 //
-// 用法：aqutter upgrade [--to=<框架版本>] [--dry-run] [--skip-pub] [--offline]
+// 用法：aqutter upgrade [--to=<框架版本>] [--dry-run] [--skip-pub] [--offline | --refresh] [--allow-downgrade]
 //   --to=<版本> : 指定框架版本（預設取 manifest 的 channels.stable）；已撤回（yanked）的版本會被拒絕
 //   --dry-run   : 只列出會改什麼，不寫檔、不執行 flutter
 //   --skip-pub  : 只改檔案，不執行 flutter pub upgrade
 //   --offline   : 不連網，manifest 只用本機快取，再退回內建快照
+//   --refresh   : 略過快取有效期，強制連網取得 manifest（與 --offline 互斥）
+//   --allow-downgrade : 目標比現況舊（Flutter／Dart 下限、.fvmrc 變低）時仍照做；預設拒絕
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -20,8 +22,9 @@ import { join } from 'node:path'
 
 import pkg from '../../package.json'
 import type { Project } from '../config.ts'
+import { readManifestFlags } from '../manifest.ts'
 import { IS_WIN, parseArgs } from '../shared.ts'
-import { LOCKED_PACKAGES, cliInstallSpec, parsePubspec, rewriteFvmrc, rewritePackageJson, rewritePubspec } from '../versioning.ts'
+import { LOCKED_PACKAGES, cliInstallSpec, detectDowngrades, parsePubspec, rewriteFvmrc, rewritePackageJson, rewritePubspec } from '../versioning.ts'
 import { detectPackageManager, installCommandOf } from '../web.ts'
 import { loadExpectedProfile } from './doctor.ts'
 import type { ExpectedProfile } from './doctor.ts'
@@ -69,12 +72,15 @@ export const planUpgrade = (input: UpgradeInput, expected: ExpectedProfile): Upg
 }
 
 export const runUpgrade = async (project: Project, argv: string[]): Promise<void> => {
-  const booleans = ['--dry-run', '--skip-pub', '--offline']
+  const booleans = ['--dry-run', '--skip-pub', '--offline', '--refresh', '--allow-downgrade']
   const dryRun = argv.includes('--dry-run')
   const skipPub = argv.includes('--skip-pub')
+  const allowDowngrade = argv.includes('--allow-downgrade')
   const { flags } = parseArgs(argv.filter(arg => !booleans.includes(arg)))
+  const { offline, refresh } = readManifestFlags(argv)
   const { expected, source } = await loadExpectedProfile({
-    offline: argv.includes('--offline'),
+    offline,
+    refresh,
     projectConfig: project.config,
     requested: flags.to,
   })
@@ -99,6 +105,24 @@ export const runUpgrade = async (project: Project, argv: string[]): Promise<void
   )
 
   console.log(`[${TAG}] 對齊到框架版本 ${expected.version}（Flutter ${expected.flutterVersion}、殼 ${expected.shellRef.slice(0, 7)}；manifest 來源：${source}）${dryRun ? '（dry-run，不寫檔）' : ''}`)
+
+  // 目標比現況舊：預設拒絕（不寫檔、不跑 pub），--allow-downgrade 才放行
+  const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync(fvmrcFile) ? readFileSync(fvmrcFile, 'utf8') : null }, expected)
+  if (downgrades.length > 0) {
+    const lines = downgrades.map(item => `  ${item.what}：${item.from} → ${item.to}`)
+    if (!allowDowngrade) {
+      console.error(`[${TAG}] 目標比現況舊，已拒絕（沒有改任何檔）：`)
+      for (const line of lines) {
+        console.error(line)
+      }
+      console.error(`[${TAG}] 目標比現況舊。常見原因是 manifest 來自過期快取，可加 --refresh 重新取得；確定要降級才加 --allow-downgrade。`)
+      process.exit(1)
+    }
+    console.warn(`[${TAG}] 警告：目標比現況舊，因為有 --allow-downgrade 仍照做：`)
+    for (const line of lines) {
+      console.warn(line)
+    }
+  }
 
   let changed = false
   const report = (file: string, changes: string[]): void => {

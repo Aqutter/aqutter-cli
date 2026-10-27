@@ -1,3 +1,5 @@
+import { compareVersions } from './manifest.ts'
+
 // doctor / upgrade 共用的純函式（versioning）：解析與改寫「專案中與框架版本綁定」的檔案。
 //   - <appDir>/pubspec.yaml ：environment.sdk / environment.flutter、殼依賴的 git ref
 //   - <appDir>/.fvmrc       ：Flutter 版本（FVM 使用者自己放的選配檔；框架不要求、也不替專案建立）
@@ -348,4 +350,36 @@ export const satisfies = (version: string, constraint: string): boolean | null =
     ok = ok && pass
   }
   return ok
+}
+
+/** `upgrade` 偵測到的「目標比現況舊」的一項。 */
+export interface Downgrade {
+  /** 哪個欄位，例如 `pubspec.yaml environment.flutter`。 */
+  what: string
+  from: string
+  to: string
+}
+
+/**
+ * 比較專案現況與 manifest 的目標，列出**變低**的項目：`pubspec.yaml` 的 `environment.flutter`、
+ * `environment.sdk` 的下限，以及 `.fvmrc` 的 `flutter`。現況或目標無法解析（沒有 `>=` 下限、`^` 範圍、
+ * 沒有 `.fvmrc`）的項目略過，不視為降級；相同或變高也不算。
+ */
+export const detectDowngrades = (
+  input: { pubspec: string, fvmrc: string | null },
+  expected: { sdk: string, flutter: string, flutterVersion: string },
+): Downgrade[] => {
+  const found: Downgrade[] = []
+  const check = (what: string, from: string | null, to: string | null): void => {
+    if (from !== null && to !== null && compareVersions(to, from) < 0) {
+      found.push({ what, from, to })
+    }
+  }
+  const info = parsePubspec(input.pubspec)
+  check('pubspec.yaml environment.flutter', info.flutter === null ? null : lowerBound(info.flutter), lowerBound(expected.flutter))
+  check('pubspec.yaml environment.sdk', info.sdk === null ? null : lowerBound(info.sdk), lowerBound(expected.sdk))
+  if (input.fvmrc !== null) {
+    check('.fvmrc flutter', parseFvmrc(input.fvmrc), expected.flutterVersion)
+  }
+  return found
 }

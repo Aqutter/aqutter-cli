@@ -19,6 +19,7 @@ import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
 import { PLUGIN_ID_PATTERN, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
 import { addArgs, detectPackageManager } from '../web.ts'
+import { readManifestFlags } from '../manifest.ts'
 import { loadExpectedProfile } from './doctor.ts'
 import type { PackageManager } from '../web.ts'
 import { usePathDependency } from './init.ts'
@@ -88,7 +89,7 @@ export const pickInstalledName = (before: DependencySpecs, after: DependencySpec
 const clientRefOf = (spec: string): string | null => /^github:Aqutter\/aqutter-js#([^&\s]+)$/.exec(spec)?.[1] ?? null
 
 const create = async (cwd: string, argv: string[]): Promise<void> => {
-  const { positional, flags } = parseArgs(argv.filter(arg => arg !== '--offline'))
+  const { positional, flags } = parseArgs(argv.filter(arg => arg !== '--offline' && arg !== '--refresh'))
   const id = positional[0]
   if (!id || !PLUGIN_ID_PATTERN.test(id)) {
     return fail(`用法：aqutter plugin create <id>（id 為小寫字母開頭、僅含小寫字母 / 數字 / 連字號，例如 haptics）`)
@@ -104,7 +105,7 @@ const create = async (cwd: string, argv: string[]): Promise<void> => {
     refs = { shellRef: flags['shell-ref'], clientRef: flags['shell-ref'] }
   }
   else {
-    const { expected } = await loadExpectedProfile({ offline: argv.includes('--offline') })
+    const { expected } = await loadExpectedProfile(readManifestFlags(argv))
     const clientRef = clientRefOf(expected.clientSpec)
     if (clientRef === null) {
       return fail(`框架版本 ${expected.version} 的 client 不是 GitHub 依賴（${expected.clientSpec}），plugin create 還不支援；請用 --shell-ref 指定。`)

@@ -224,6 +224,8 @@ export interface LoadOptions {
   url: string
   /** 不連網：只用快取，再退回內建快照。 */
   offline: boolean
+  /** 略過快取有效期，直接連網（失敗時仍退回快取，再退回內建快照）；與 `offline` 互斥。 */
+  refresh?: boolean
   /** 內建的最後已知 manifest（已解析的 JSON 內容）。 */
   snapshot: unknown
   io: ManifestIo
@@ -238,6 +240,53 @@ export interface LoadedManifest {
   source: ManifestSource
   /** 需要讓使用者知道的事（例如退回了過期快取）。 */
   warnings: string[]
+  /** 來源是快取（含過期快取）時，快取已經存在多久（毫秒）；其他來源沒有。 */
+  ageMs?: number
+}
+
+/** 把毫秒顯示成人讀的年齡：不足 1 分鐘、N 分鐘、N 小時（< 48 小時）、N 天。 */
+export const formatAge = (ms: number): string => {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) {
+    return '不到 1 分鐘'
+  }
+  if (minutes < 60) {
+    return `${minutes} 分鐘`
+  }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) {
+    return `${hours} 小時`
+  }
+  return `${Math.floor(hours / 24)} 天`
+}
+
+/** 指令輸出用的來源說明；來源是快取時帶上年齡與 `--refresh` 的提示。 */
+export const describeSource = (loaded: { source: ManifestSource, ageMs?: number }): string => {
+  const when = loaded.ageMs === undefined ? null : loaded.ageMs < 60_000 ? '不到 1 分鐘前取得' : `約 ${formatAge(loaded.ageMs)}前取得`
+  if (loaded.source === 'cache' && when !== null) {
+    return `cache（${when}；--refresh 可強制重新取得）`
+  }
+  if (loaded.source === 'stale-cache' && when !== null) {
+    return `stale-cache（${when}）`
+  }
+  return loaded.source
+}
+
+/** 指令旗標中與 manifest 有關的部分；`--offline` 與 `--refresh` 同時給出視為衝突。 */
+export const parseManifestFlags = (argv: string[]): { offline: boolean, refresh: boolean, conflict: boolean } => {
+  const offline = argv.includes('--offline')
+  const refresh = argv.includes('--refresh')
+  return { offline, refresh, conflict: offline && refresh }
+}
+
+/** 指令用：讀 manifest 旗標，衝突時印錯誤並以 1 結束（不執行指令）。 */
+export const readManifestFlags = (argv: string[]): { offline: boolean, refresh: boolean } => {
+  const flags = parseManifestFlags(argv)
+  if (flags.conflict) {
+    console.error('[manifest] --offline 與 --refresh 不能同時使用：--offline 不連網，--refresh 強制連網。')
+    process.exit(1)
+  }
+  return { offline: flags.offline, refresh: flags.refresh }
 }
 
 /** 依 Contract §4 取得 manifest。 */
@@ -277,16 +326,17 @@ export const loadManifest = async (options: LoadOptions): Promise<LoadedManifest
   }
 
   const cache = cached()
+  const ageOf = (entry: { mtimeMs: number }): number => Math.max(0, options.io.now() - entry.mtimeMs)
 
   if (options.offline) {
     if (cache) {
-      return { manifest: cache.manifest, source: 'cache', warnings }
+      return { manifest: cache.manifest, source: 'cache', warnings, ageMs: ageOf(cache) }
     }
     return fromSnapshot('離線且沒有快取')
   }
 
-  if (cache && options.io.now() - cache.mtimeMs < ttlMs) {
-    return { manifest: cache.manifest, source: 'cache', warnings }
+  if (!options.refresh && cache && options.io.now() - cache.mtimeMs < ttlMs) {
+    return { manifest: cache.manifest, source: 'cache', warnings, ageMs: ageOf(cache) }
   }
 
   let failure: string
@@ -305,7 +355,7 @@ export const loadManifest = async (options: LoadOptions): Promise<LoadedManifest
 
   if (cache) {
     warnings.push(`${failure}，改用過期的本機快取。`)
-    return { manifest: cache.manifest, source: 'stale-cache', warnings }
+    return { manifest: cache.manifest, source: 'stale-cache', warnings, ageMs: ageOf(cache) }
   }
   return fromSnapshot(failure)
 }
@@ -401,11 +451,12 @@ export const manifestUrl = (env: NodeJS.ProcessEnv = process.env, projectConfig?
   return found ?? DEFAULT_MANIFEST_URL
 }
 
-/** 指令用的入口：依環境變數、專案設定與 `--offline` 取得 manifest，並把警告印到 stderr。 */
-export const loadConfiguredManifest = async (options: { offline: boolean, projectConfig?: unknown }): Promise<LoadedManifest> => {
+/** 指令用的入口：依環境變數、專案設定與 `--offline`／`--refresh` 取得 manifest，並把警告印到 stderr。 */
+export const loadConfiguredManifest = async (options: { offline: boolean, refresh?: boolean, projectConfig?: unknown }): Promise<LoadedManifest> => {
   const loaded = await loadManifest({
     url: manifestUrl(process.env, options.projectConfig),
     offline: options.offline,
+    refresh: options.refresh,
     snapshot,
     io: createFileIo(),
   })

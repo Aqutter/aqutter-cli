@@ -8,9 +8,12 @@ import {
   assertCliSupports,
   compareVersions,
   defaultCacheDir,
+  describeSource,
+  formatAge,
   loadManifest,
   manifestUrl,
   parseManifest,
+  parseManifestFlags,
   resolveRelease,
 } from '../src/manifest.ts'
 import type { ManifestIo } from '../src/manifest.ts'
@@ -127,9 +130,10 @@ const state = (overrides: Partial<FakeState> = {}): FakeState => ({
   ...overrides,
 })
 
-const load = (s: FakeState, options: { offline?: boolean, snapshot?: unknown } = {}) => loadManifest({
+const load = (s: FakeState, options: { offline?: boolean, refresh?: boolean, snapshot?: unknown } = {}) => loadManifest({
   url: 'https://example.com/releases.json',
   offline: options.offline ?? false,
+  refresh: options.refresh,
   snapshot: options.snapshot ?? snapshot,
   io: fake(s),
 })
@@ -210,6 +214,90 @@ describe('loadManifest', () => {
   it('fails when nothing usable is left', async () => {
     const s = state({ fetchResult: new Error('x') })
     await expect(load(s, { snapshot: { broken: true } })).rejects.toThrow(/內建快照也不可用/)
+  })
+})
+
+describe('loadManifest with --refresh', () => {
+  it('skips a fresh cache and fetches', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - HOUR } })
+    const result = await load(s, { refresh: true })
+    expect(result.source).toBe('network')
+    expect(s.fetched).toEqual(['https://example.com/releases.json'])
+    expect(s.written).toEqual([NEW_TEXT])
+    expect(result.manifest.generatedAt).toBe('2026-10-22T00:00:00Z')
+    expect(result.ageMs).toBeUndefined()
+  })
+
+  it('falls back to the cache (even a fresh one) with a warning when the fetch fails', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - HOUR }, fetchResult: new Error('offline') })
+    const result = await load(s, { refresh: true })
+    expect(result.source).toBe('stale-cache')
+    expect(result.warnings.join('\n')).toMatch(/過期的本機快取/)
+    expect(result.ageMs).toBe(HOUR)
+  })
+
+  it('falls back to the snapshot when there is no cache and the fetch fails', async () => {
+    const s = state({ fetchResult: new Error('offline') })
+    expect((await load(s, { refresh: true })).source).toBe('snapshot')
+  })
+
+  it('without --refresh a fresh cache still wins', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - HOUR } })
+    expect((await load(s)).source).toBe('cache')
+    expect(s.fetched).toEqual([])
+  })
+})
+
+describe('cache age', () => {
+  it('reports how old a fresh cache is', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - 3 * HOUR } })
+    const result = await load(s)
+    expect(result.source).toBe('cache')
+    expect(result.ageMs).toBe(3 * HOUR)
+  })
+
+  it('reports the age of a stale cache used after a failed fetch', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - 30 * HOUR }, fetchResult: new Error('x') })
+    const result = await load(s)
+    expect(result.source).toBe('stale-cache')
+    expect(result.ageMs).toBe(30 * HOUR)
+  })
+
+  it('offline reports the age of the cache it used', async () => {
+    const s = state({ cache: { text: OLD_TEXT, mtimeMs: 100 * HOUR - 2 * HOUR } })
+    expect((await load(s, { offline: true })).ageMs).toBe(2 * HOUR)
+  })
+
+  it('formats ages: under a minute, minutes, hours below 48, then days', () => {
+    expect(formatAge(0)).toBe('不到 1 分鐘')
+    expect(formatAge(59_000)).toBe('不到 1 分鐘')
+    expect(formatAge(5 * 60_000)).toBe('5 分鐘')
+    expect(formatAge(59 * 60_000)).toBe('59 分鐘')
+    expect(formatAge(60 * 60_000)).toBe('1 小時')
+    expect(formatAge(47 * HOUR + 59 * 60_000)).toBe('47 小時')
+    expect(formatAge(48 * HOUR)).toBe('2 天')
+    expect(formatAge(100 * HOUR)).toBe('4 天')
+  })
+
+  it('describes a cache source with its age and the --refresh hint, other sources unchanged', () => {
+    expect(describeSource({ source: 'cache', ageMs: 3 * HOUR })).toBe('cache（約 3 小時前取得；--refresh 可強制重新取得）')
+    expect(describeSource({ source: 'stale-cache', ageMs: 2 * 24 * HOUR })).toBe('stale-cache（約 2 天前取得）')
+    expect(describeSource({ source: 'cache', ageMs: 5_000 })).toBe('cache（不到 1 分鐘前取得；--refresh 可強制重新取得）')
+    expect(describeSource({ source: 'network' })).toBe('network')
+    expect(describeSource({ source: 'snapshot' })).toBe('snapshot')
+  })
+})
+
+describe('parseManifestFlags', () => {
+  it('reads --offline and --refresh', () => {
+    expect(parseManifestFlags([])).toEqual({ offline: false, refresh: false, conflict: false })
+    expect(parseManifestFlags(['--offline'])).toEqual({ offline: true, refresh: false, conflict: false })
+    expect(parseManifestFlags(['--refresh', '--dry-run'])).toEqual({ offline: false, refresh: true, conflict: false })
+  })
+
+  it('flags --offline together with --refresh as a conflict', () => {
+    expect(parseManifestFlags(['--offline', '--refresh']).conflict).toBe(true)
+    expect(parseManifestFlags(['--refresh', 'x', '--offline']).conflict).toBe(true)
   })
 })
 
