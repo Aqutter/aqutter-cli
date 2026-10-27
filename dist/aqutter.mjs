@@ -488,20 +488,20 @@ var init_manifestSnapshot = __esm({
         "0.0.0": {
           status: "supported",
           flutter: {
-            baseline: "3.47.4"
+            baseline: "3.47.8"
           },
-          dart: ">=3.13.0 <4.0.0",
+          dart: ">=3.13.7 <4.0.0",
           shell: {
             url: "https://github.com/Aqutter/aqutter.git",
             path: "shell",
-            ref: "2c68ba5ed66a37629d99ef30b6dd2eb7f49adb31"
+            ref: "b0c98656e1466e1a7106f6dd5ba723596af06e72"
           },
           core: {
             url: "https://github.com/Aqutter/aqutter_core.git",
-            ref: "dcf20eabcb44b988a18fd273da9788d810562bff"
+            ref: "bc3e63372ea663e76feed1c076d0fe278b8236b0"
           },
           client: {
-            spec: "github:Aqutter/aqutter-js#22840cd46fb1abae31fa50411646e96918bda354"
+            spec: "github:Aqutter/aqutter-js#2f5de5d2a4ea9808d402658bb1c53a54cd535911"
           },
           cli: {
             min: "0.0.0"
@@ -516,7 +516,7 @@ var init_manifestSnapshot = __esm({
 import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, statSync as statSync2, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3 } from "node:path";
-var DEFAULT_MANIFEST_URL, MANIFEST_URL_ENV, SUPPORTED_SCHEMA, DEFAULT_TTL_MS, DEFAULT_TIMEOUT_MS, MAX_BYTES, ManifestError, ManifestTooNewError, VERSION, SHA, GITHUB_GIT_URL, DART_CONSTRAINT, STATUSES, isRecord2, triple, compareVersions, parseManifest, parseText, loadManifest, resolveRelease, assertCliSupports, defaultCacheDir, createFileIo, manifestUrl, loadConfiguredManifest;
+var DEFAULT_MANIFEST_URL, MANIFEST_URL_ENV, SUPPORTED_SCHEMA, DEFAULT_TTL_MS, DEFAULT_TIMEOUT_MS, MAX_BYTES, ManifestError, ManifestTooNewError, VERSION, SHA, GITHUB_GIT_URL, DART_CONSTRAINT, STATUSES, isRecord2, triple, compareVersions, parseManifest, parseText, formatAge, describeSource, parseManifestFlags, readManifestFlags, loadManifest, resolveRelease, assertCliSupports, defaultCacheDir, createFileIo, manifestUrl, loadConfiguredManifest;
 var init_manifest = __esm({
   "src/manifest.ts"() {
     "use strict";
@@ -671,6 +671,43 @@ var init_manifest = __esm({
       }
       return parseManifest(raw);
     };
+    formatAge = (ms) => {
+      const minutes = Math.floor(ms / 6e4);
+      if (minutes < 1) {
+        return "\u4E0D\u5230 1 \u5206\u9418";
+      }
+      if (minutes < 60) {
+        return `${minutes} \u5206\u9418`;
+      }
+      const hours = Math.floor(minutes / 60);
+      if (hours < 48) {
+        return `${hours} \u5C0F\u6642`;
+      }
+      return `${Math.floor(hours / 24)} \u5929`;
+    };
+    describeSource = (loaded) => {
+      const when = loaded.ageMs === void 0 ? null : loaded.ageMs < 6e4 ? "\u4E0D\u5230 1 \u5206\u9418\u524D\u53D6\u5F97" : `\u7D04 ${formatAge(loaded.ageMs)}\u524D\u53D6\u5F97`;
+      if (loaded.source === "cache" && when !== null) {
+        return `cache\uFF08${when}\uFF1B--refresh \u53EF\u5F37\u5236\u91CD\u65B0\u53D6\u5F97\uFF09`;
+      }
+      if (loaded.source === "stale-cache" && when !== null) {
+        return `stale-cache\uFF08${when}\uFF09`;
+      }
+      return loaded.source;
+    };
+    parseManifestFlags = (argv) => {
+      const offline = argv.includes("--offline");
+      const refresh = argv.includes("--refresh");
+      return { offline, refresh, conflict: offline && refresh };
+    };
+    readManifestFlags = (argv) => {
+      const flags = parseManifestFlags(argv);
+      if (flags.conflict) {
+        console.error("[manifest] --offline \u8207 --refresh \u4E0D\u80FD\u540C\u6642\u4F7F\u7528\uFF1A--offline \u4E0D\u9023\u7DB2\uFF0C--refresh \u5F37\u5236\u9023\u7DB2\u3002");
+        process.exit(1);
+      }
+      return { offline: flags.offline, refresh: flags.refresh };
+    };
     loadManifest = async (options) => {
       const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
       const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -701,14 +738,15 @@ var init_manifest = __esm({
         }
       };
       const cache = cached();
+      const ageOf = (entry) => Math.max(0, options.io.now() - entry.mtimeMs);
       if (options.offline) {
         if (cache) {
-          return { manifest: cache.manifest, source: "cache", warnings };
+          return { manifest: cache.manifest, source: "cache", warnings, ageMs: ageOf(cache) };
         }
         return fromSnapshot("\u96E2\u7DDA\u4E14\u6C92\u6709\u5FEB\u53D6");
       }
-      if (cache && options.io.now() - cache.mtimeMs < ttlMs) {
-        return { manifest: cache.manifest, source: "cache", warnings };
+      if (!options.refresh && cache && options.io.now() - cache.mtimeMs < ttlMs) {
+        return { manifest: cache.manifest, source: "cache", warnings, ageMs: ageOf(cache) };
       }
       let failure;
       try {
@@ -724,7 +762,7 @@ var init_manifest = __esm({
       }
       if (cache) {
         warnings.push(`${failure}\uFF0C\u6539\u7528\u904E\u671F\u7684\u672C\u6A5F\u5FEB\u53D6\u3002`);
-        return { manifest: cache.manifest, source: "stale-cache", warnings };
+        return { manifest: cache.manifest, source: "stale-cache", warnings, ageMs: ageOf(cache) };
       }
       return fromSnapshot(failure);
     };
@@ -807,6 +845,7 @@ var init_manifest = __esm({
       const loaded = await loadManifest({
         url: manifestUrl(process.env, options.projectConfig),
         offline: options.offline,
+        refresh: options.refresh,
         snapshot: manifestSnapshot_default,
         io: createFileIo()
       });
@@ -819,10 +858,11 @@ var init_manifest = __esm({
 });
 
 // src/versioning.ts
-var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, LEGACY_CLI_SPEC, CURRENT_CLI_SPEC, CLIENT_GITHUB_SPEC, classifyCliSpec, isClientGithubSpec, cliInstallSpec, readNpmSpecs, rewritePackageJson, parseLock, satisfies;
+var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, LEGACY_CLI_SPEC, CURRENT_CLI_SPEC, CLIENT_GITHUB_SPEC, classifyCliSpec, isClientGithubSpec, cliInstallSpec, readNpmSpecs, rewritePackageJson, parseLock, lowerBound, satisfies, detectDowngrades;
 var init_versioning = __esm({
   "src/versioning.ts"() {
     "use strict";
+    init_manifest();
     SHELL_PACKAGE = "aqutter";
     LOCKED_PACKAGES = ["aqutter", "aqutter_core"];
     NPM_PACKAGES = ["@aqutter/aqutter", "@aqutter/aqutter-cli"];
@@ -1040,6 +1080,10 @@ var init_versioning = __esm({
       }
       return result;
     };
+    lowerBound = (constraint) => {
+      const match = />=(\d+\.\d+\.\d+)/.exec(constraint);
+      return match ? match[1] : null;
+    };
     satisfies = (version, constraint) => {
       const parse = (value) => {
         const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value);
@@ -1071,6 +1115,21 @@ var init_versioning = __esm({
         ok = ok && pass;
       }
       return ok;
+    };
+    detectDowngrades = (input, expected) => {
+      const found = [];
+      const check = (what, from, to) => {
+        if (from !== null && to !== null && compareVersions(to, from) < 0) {
+          found.push({ what, from, to });
+        }
+      };
+      const info = parsePubspec(input.pubspec);
+      check("pubspec.yaml environment.flutter", info.flutter === null ? null : lowerBound(info.flutter), lowerBound(expected.flutter));
+      check("pubspec.yaml environment.sdk", info.sdk === null ? null : lowerBound(info.sdk), lowerBound(expected.sdk));
+      if (input.fvmrc !== null) {
+        check(".fvmrc flutter", parseFvmrc(input.fvmrc), expected.flutterVersion);
+      }
+      return found;
     };
   }
 });
@@ -1265,11 +1324,11 @@ var init_doctor = __esm({
     };
     LABEL = { ok: "[ok]  ", warn: "[\u8B66\u544A]", error: "[\u932F\u8AA4]" };
     runDoctor = async (project, argv) => {
-      const offline = argv.includes("--offline");
+      const { offline, refresh } = readManifestFlags(argv);
       console.log(`[${TAG}] \u5C08\u6848\uFF1A${project.root}\uFF08CLI ${package_default.version}\uFF09`);
-      const loaded = await loadConfiguredManifest({ offline, projectConfig: project.config });
+      const loaded = await loadConfiguredManifest({ offline, refresh, projectConfig: project.config });
       const { version, release } = resolveRelease(loaded.manifest);
-      console.log(`[${TAG}] \u6846\u67B6\u7248\u672C\uFF1A${version}\uFF08manifest \u4F86\u6E90\uFF1A${loaded.source}\uFF09`);
+      console.log(`[${TAG}] \u6846\u67B6\u7248\u672C\uFF1A${version}\uFF08manifest \u4F86\u6E90\uFF1A${describeSource(loaded)}\uFF09`);
       const findings = diagnose(gatherFacts(project, expectedProfile(version, release)));
       for (const finding of findings) {
         console.log(`${LABEL[finding.level]} ${finding.title}`);
@@ -1289,10 +1348,10 @@ var init_doctor = __esm({
       }
     };
     loadExpectedProfile = async (options) => {
-      const loaded = await loadConfiguredManifest({ offline: options.offline, projectConfig: options.projectConfig });
+      const loaded = await loadConfiguredManifest({ offline: options.offline, refresh: options.refresh, projectConfig: options.projectConfig });
       const { version, release } = resolveRelease(loaded.manifest, options.requested);
       assertCliSupports(release, package_default.version);
-      return { expected: expectedProfile(version, release), release, source: loaded.source };
+      return { expected: expectedProfile(version, release), release, source: describeSource(loaded) };
     };
   }
 });
@@ -1400,6 +1459,7 @@ var init_init = __esm({
     init_package();
     init_config();
     init_shared();
+    init_manifest();
     init_doctor();
     init_template();
     TAG2 = "init";
@@ -1457,7 +1517,7 @@ ${missing.join("\n")}
 `);
     };
     runInit = async (cwd, argv) => {
-      const { flags } = parseArgs(argv.filter((arg) => arg !== "--force" && arg !== "--offline"));
+      const { flags } = parseArgs(argv.filter((arg) => arg !== "--force" && arg !== "--offline" && arg !== "--refresh"));
       const force = argv.includes("--force");
       const root = resolve3(cwd);
       let packageName = basename2(root);
@@ -1482,7 +1542,7 @@ ${missing.join("\n")}
       }
       const appDirName = flags["app-dir"] ?? DEFAULT_CONFIG.appDir;
       const appDir = resolve3(root, appDirName);
-      const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile({ offline: argv.includes("--offline") })).expected.version);
+      const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile(readManifestFlags(argv))).expected.version);
       const configFile = join6(root, CONFIG_FILE);
       if (existsSync5(configFile) && !force) {
         fail(`${CONFIG_FILE} \u5DF2\u5B58\u5728\u3002\u8981\u91CD\u65B0\u5C55\u958B\u8ACB\u52A0 --force\u3002`);
@@ -1826,6 +1886,7 @@ var init_plugin = __esm({
     init_template();
     init_plugins();
     init_web();
+    init_manifest();
     init_doctor();
     init_init();
     TAG3 = "plugin";
@@ -1867,7 +1928,7 @@ var init_plugin = __esm({
     };
     clientRefOf = (spec) => /^github:Aqutter\/aqutter-js#([^&\s]+)$/.exec(spec)?.[1] ?? null;
     create = async (cwd, argv) => {
-      const { positional, flags } = parseArgs(argv.filter((arg) => arg !== "--offline"));
+      const { positional, flags } = parseArgs(argv.filter((arg) => arg !== "--offline" && arg !== "--refresh"));
       const id = positional[0];
       if (!id || !PLUGIN_ID_PATTERN.test(id)) {
         return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
@@ -1881,7 +1942,7 @@ var init_plugin = __esm({
       if (flags["shell-ref"] !== void 0) {
         refs = { shellRef: flags["shell-ref"], clientRef: flags["shell-ref"] };
       } else {
-        const { expected } = await loadExpectedProfile({ offline: argv.includes("--offline") });
+        const { expected } = await loadExpectedProfile(readManifestFlags(argv));
         const clientRef = clientRefOf(expected.clientSpec);
         if (clientRef === null) {
           return fail2(`\u6846\u67B6\u7248\u672C ${expected.version} \u7684 client \u4E0D\u662F GitHub \u4F9D\u8CF4\uFF08${expected.clientSpec}\uFF09\uFF0Cplugin create \u9084\u4E0D\u652F\u63F4\uFF1B\u8ACB\u7528 --shell-ref \u6307\u5B9A\u3002`);
@@ -4113,6 +4174,7 @@ var init_upgrade = __esm({
   "src/commands/upgrade.ts"() {
     "use strict";
     init_package();
+    init_manifest();
     init_shared();
     init_versioning();
     init_web();
@@ -4136,12 +4198,15 @@ var init_upgrade = __esm({
       return { pubspec, fvmrc, packageJson, needsPubUpgrade: shellIsGit };
     };
     runUpgrade = async (project, argv) => {
-      const booleans = ["--dry-run", "--skip-pub", "--offline"];
+      const booleans = ["--dry-run", "--skip-pub", "--offline", "--refresh", "--allow-downgrade"];
       const dryRun = argv.includes("--dry-run");
       const skipPub = argv.includes("--skip-pub");
+      const allowDowngrade = argv.includes("--allow-downgrade");
       const { flags } = parseArgs(argv.filter((arg) => !booleans.includes(arg)));
+      const { offline, refresh } = readManifestFlags(argv);
       const { expected, source } = await loadExpectedProfile({
-        offline: argv.includes("--offline"),
+        offline,
+        refresh,
         projectConfig: project.config,
         requested: flags.to
       });
@@ -4163,6 +4228,22 @@ var init_upgrade = __esm({
         expected
       );
       console.log(`[${TAG8}] \u5C0D\u9F4A\u5230\u6846\u67B6\u7248\u672C ${expected.version}\uFF08Flutter ${expected.flutterVersion}\u3001\u6BBC ${expected.shellRef.slice(0, 7)}\uFF1Bmanifest \u4F86\u6E90\uFF1A${source}\uFF09${dryRun ? "\uFF08dry-run\uFF0C\u4E0D\u5BEB\u6A94\uFF09" : ""}`);
+      const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync14(fvmrcFile) ? readFileSync15(fvmrcFile, "utf8") : null }, expected);
+      if (downgrades.length > 0) {
+        const lines = downgrades.map((item) => `  ${item.what}\uFF1A${item.from} \u2192 ${item.to}`);
+        if (!allowDowngrade) {
+          console.error(`[${TAG8}] \u76EE\u6A19\u6BD4\u73FE\u6CC1\u820A\uFF0C\u5DF2\u62D2\u7D55\uFF08\u6C92\u6709\u6539\u4EFB\u4F55\u6A94\uFF09\uFF1A`);
+          for (const line of lines) {
+            console.error(line);
+          }
+          console.error(`[${TAG8}] \u76EE\u6A19\u6BD4\u73FE\u6CC1\u820A\u3002\u5E38\u898B\u539F\u56E0\u662F manifest \u4F86\u81EA\u904E\u671F\u5FEB\u53D6\uFF0C\u53EF\u52A0 --refresh \u91CD\u65B0\u53D6\u5F97\uFF1B\u78BA\u5B9A\u8981\u964D\u7D1A\u624D\u52A0 --allow-downgrade\u3002`);
+          process.exit(1);
+        }
+        console.warn(`[${TAG8}] \u8B66\u544A\uFF1A\u76EE\u6A19\u6BD4\u73FE\u6CC1\u820A\uFF0C\u56E0\u70BA\u6709 --allow-downgrade \u4ECD\u7167\u505A\uFF1A`);
+        for (const line of lines) {
+          console.warn(line);
+        }
+      }
       let changed = false;
       const report = (file, changes) => {
         for (const change of changes) {
@@ -5105,12 +5186,12 @@ var HELP = `aqutter ${package_default.version}
   android gen-jks      \u7522\u751F Android \u7C3D\u7AE0\u7528 keystore \u8207 key.properties
   plugin create <name> \u7522\u751F Aqutter plugin \u5C08\u6848
   plugin add <pkg>     \u628A plugin \u52A0\u5165\u76EE\u524D\u5C08\u6848
-  doctor [--offline]   \u6AA2\u67E5\u5C08\u6848\u8207\u6846\u67B6 release manifest \u7684\u7248\u672C\u662F\u5426\u4E00\u81F4\uFF08Flutter\u3001\u6BBC ref\u3001.fvmrc\u3001npm \u4F9D\u8CF4\u3001lock\uFF09
-  upgrade [--to=<\u7248\u672C>] [--dry-run]  \u628A\u5C08\u6848\u5C0D\u9F4A\u5230 manifest \u7684\u6846\u67B6\u7248\u672C\uFF08pubspec / .fvmrc / package.json\uFF0C\u4E26\u66F4\u65B0 lock\uFF09
+  doctor [--offline|--refresh]  \u6AA2\u67E5\u5C08\u6848\u8207\u6846\u67B6 release manifest \u7684\u7248\u672C\u662F\u5426\u4E00\u81F4\uFF08Flutter\u3001\u6BBC ref\u3001.fvmrc\u3001npm \u4F9D\u8CF4\u3001lock\uFF09
+  upgrade [--to=<\u7248\u672C>] [--dry-run] [--allow-downgrade]  \u628A\u5C08\u6848\u5C0D\u9F4A\u5230 manifest \u7684\u6846\u67B6\u7248\u672C\uFF08pubspec / .fvmrc / package.json\uFF0C\u4E26\u66F4\u65B0 lock\uFF09\uFF1B\u76EE\u6A19\u6BD4\u73FE\u6CC1\u820A\u6642\u9810\u8A2D\u62D2\u7D55
 
 \u901A\u7528\u65D7\u6A19\uFF08dev / seed / build\uFF09\uFF1A-e <\u74B0\u5883\u540D\u6216 env \u6A94>\uFF08\u7B49\u540C --env=\u2026\uFF09--x-env=<\u540D\u7A31> --flavor=<\u540D\u7A31>\uFF1B\u8A73\u898B\u5404\u6307\u4EE4\u8AAA\u660E\u3002
 
-release manifest\uFF08init / plugin create / doctor / upgrade \u6703\u8B80\uFF09\uFF1A--offline \u4E0D\u9023\u7DB2\uFF0C\u53EA\u7528\u672C\u6A5F\u5FEB\u53D6\u8207\u5167\u5EFA\u5FEB\u7167\uFF1B
+release manifest\uFF08init / plugin create / doctor / upgrade \u6703\u8B80\uFF09\uFF1A--offline \u4E0D\u9023\u7DB2\uFF0C\u53EA\u7528\u672C\u6A5F\u5FEB\u53D6\u8207\u5167\u5EFA\u5FEB\u7167\uFF1B--refresh \u7565\u904E 24 \u5C0F\u6642\u5FEB\u53D6\u3001\u5F37\u5236\u9023\u7DB2\uFF08\u8207 --offline \u4E92\u65A5\uFF09\uFF1B
 \u74B0\u5883\u8B8A\u6578 AQUTTER_MANIFEST_URL \u6216 aqutter.config.json \u7684 manifest.url \u53EF\u6539\u6210\u5225\u7684 https \u7DB2\u5740\u3002
 `;
 var main = async () => {

@@ -15,12 +15,12 @@ const HELP = `aqutter ${pkg.version}
   android gen-jks      產生 Android 簽章用 keystore 與 key.properties
   plugin create <name> 產生 Aqutter plugin 專案
   plugin add <pkg>     把 plugin 加入目前專案
-  doctor [--offline]   檢查專案與框架 release manifest 的版本是否一致（Flutter、殼 ref、.fvmrc、npm 依賴、lock）
-  upgrade [--to=<版本>] [--dry-run]  把專案對齊到 manifest 的框架版本（pubspec / .fvmrc / package.json，並更新 lock）
+  doctor [--offline|--refresh]  檢查專案與框架 release manifest 的版本是否一致（Flutter、殼 ref、.fvmrc、npm 依賴、lock）
+  upgrade [--to=<版本>] [--dry-run] [--allow-downgrade]  把專案對齊到 manifest 的框架版本（pubspec / .fvmrc / package.json，並更新 lock）；目標比現況舊時預設拒絕
 
 通用旗標（dev / seed / build）：-e <環境名或 env 檔>（等同 --env=…）--x-env=<名稱> --flavor=<名稱>；詳見各指令說明。
 
-release manifest（init / plugin create / doctor / upgrade 會讀）：--offline 不連網，只用本機快取與內建快照；
+release manifest（init / plugin create / doctor / upgrade 會讀）：--offline 不連網，只用本機快取與內建快照；--refresh 略過 24 小時快取、強制連網（與 --offline 互斥）；
 環境變數 AQUTTER_MANIFEST_URL 或 aqutter.config.json 的 manifest.url 可改成別的 https 網址。
 `
 

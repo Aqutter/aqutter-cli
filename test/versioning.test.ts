@@ -6,6 +6,7 @@ import { planUpgrade } from '../src/commands/upgrade.ts'
 import {
   classifyCliSpec,
   cliInstallSpec,
+  detectDowngrades,
   isClientGithubSpec,
   lowerBound,
   parseFvmrc,
@@ -412,5 +413,39 @@ describe('planUpgrade', () => {
   it('does not request a pub upgrade for a path dependency', () => {
     const pubspec = 'environment:\n  sdk: \'>=3.13.0 <4.0.0\'\n  flutter: \'>=3.47.4\'\n\ndependencies:\n  aqutter:\n    path: ../shell\n'
     expect(planUpgrade({ pubspec, fvmrc: null, packageJson: null, keepShellRef: false }, EXPECTED).needsPubUpgrade).toBe(false)
+  })
+})
+
+describe('detectDowngrades', () => {
+  const target = { sdk: '>=3.13.7 <4.0.0', flutter: '>=3.47.8', flutterVersion: '3.47.8' }
+  const pubspec = (sdk: string, flutter: string): string => `environment:\n  sdk: '${sdk}'\n  flutter: '${flutter}'\n\ndependencies:\n  flutter:\n    sdk: flutter\n`
+
+  it('is empty when nothing gets lower (equal or higher)', () => {
+    expect(detectDowngrades({ pubspec: pubspec('>=3.13.7 <4.0.0', '>=3.47.8'), fvmrc: null }, target)).toEqual([])
+    expect(detectDowngrades({ pubspec: pubspec('>=3.13.0 <4.0.0', '>=3.47.4'), fvmrc: '{"flutter":"3.47.4"}' }, target)).toEqual([])
+  })
+
+  it('reports a lower Flutter bound in pubspec.yaml', () => {
+    const found = detectDowngrades({ pubspec: pubspec('>=3.13.7 <4.0.0', '>=3.47.8'), fvmrc: null }, { ...target, flutter: '>=3.47.4', flutterVersion: '3.47.4' })
+    expect(found).toEqual([{ what: 'pubspec.yaml environment.flutter', from: '3.47.8', to: '3.47.4' }])
+  })
+
+  it('reports a lower Dart bound and a lower .fvmrc together', () => {
+    const found = detectDowngrades(
+      { pubspec: pubspec('>=3.13.7 <4.0.0', '>=3.47.8'), fvmrc: '{"flutter":"3.47.8"}' },
+      { sdk: '>=3.13.0 <4.0.0', flutter: '>=3.47.8', flutterVersion: '3.47.4' },
+    )
+    expect(found.map(item => item.what)).toEqual(['pubspec.yaml environment.sdk', '.fvmrc flutter'])
+  })
+
+  it('skips what it cannot read: caret ranges, no pubspec bounds, no .fvmrc, invalid .fvmrc', () => {
+    expect(detectDowngrades({ pubspec: pubspec('^3.13.7', '^3.47.8'), fvmrc: null }, { sdk: '>=3.0.0 <4.0.0', flutter: '>=3.0.0', flutterVersion: '3.0.0' })).toEqual([])
+    expect(detectDowngrades({ pubspec: 'name: x\n', fvmrc: 'not json' }, { sdk: '>=3.0.0 <4.0.0', flutter: '>=3.0.0', flutterVersion: '3.0.0' })).toEqual([])
+  })
+
+  it('reproduces the stale-cache incident: 3.47.8 project against a 3.47.4 manifest', () => {
+    const stale = { sdk: '>=3.13.0 <4.0.0', flutter: '>=3.47.4', flutterVersion: '3.47.4' }
+    const found = detectDowngrades({ pubspec: pubspec('>=3.13.7 <4.0.0', '>=3.47.8'), fvmrc: '{"flutter":"3.47.8"}' }, stale)
+    expect(found).toHaveLength(3)
   })
 })
