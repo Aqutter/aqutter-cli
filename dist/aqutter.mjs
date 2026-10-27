@@ -1809,6 +1809,7 @@ var init_web = __esm({
 // src/commands/plugin.ts
 var plugin_exports = {};
 __export(plugin_exports, {
+  pickInstalledName: () => pickInstalledName,
   runPlugin: () => runPlugin,
   toClassName: () => toClassName,
   toSnake: () => toSnake
@@ -1816,7 +1817,7 @@ __export(plugin_exports, {
 import { spawnSync as spawnSync3 } from "node:child_process";
 import { existsSync as existsSync8, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join9, relative as relative3, resolve as resolve4 } from "node:path";
-var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencyNames, clientRefOf, create, add, remove, runPlugin;
+var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
     "use strict";
@@ -1842,13 +1843,27 @@ var init_plugin = __esm({
         fail2(`${pm} ${args.join(" ")} \u5931\u6557\uFF08exit ${result.status ?? "signal"}\uFF09\u3002`);
       }
     };
-    readDependencyNames = (root) => {
+    readDependencySpecs = (root) => {
       const file = join9(root, "package.json");
       if (!existsSync8(file)) {
-        return /* @__PURE__ */ new Set();
+        return /* @__PURE__ */ new Map();
       }
       const json = JSON.parse(readFileSync9(file, "utf8"));
-      return /* @__PURE__ */ new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})]);
+      return new Map(Object.entries({ ...json.devDependencies, ...json.dependencies }));
+    };
+    pickInstalledName = (before, after, source) => {
+      const added = [...after.keys()].find((name) => !before.has(name));
+      if (added !== void 0) {
+        return added;
+      }
+      const changed = [...after].find(([name, spec]) => before.has(name) && before.get(name) !== spec);
+      if (changed !== void 0) {
+        return changed[0];
+      }
+      if (after.has(source)) {
+        return source;
+      }
+      return [...after].find(([, spec]) => spec === source)?.[0];
     };
     clientRefOf = (spec) => /^github:Aqutter\/aqutter-js#([^&\s]+)$/.exec(spec)?.[1] ?? null;
     create = async (cwd, argv) => {
@@ -1902,13 +1917,13 @@ var init_plugin = __esm({
       }
       const project = loadProject(cwd);
       const pm = detectPackageManager(project.root);
-      const before = readDependencyNames(project.root);
-      if (!argv.includes("--no-install")) {
+      const before = readDependencySpecs(project.root);
+      const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync8(join9(project.root, "node_modules", name, "aqutter-plugin.json")));
+      if (!argv.includes("--no-install") && !alreadyInstalled) {
         runPm(pm, addArgs(pm, source), project.root);
       }
-      const after = readDependencyNames(project.root);
-      const added = [...after].filter((name) => !before.has(name));
-      const npmName = added[0] ?? (before.has(source) ? source : void 0);
+      const after = readDependencySpecs(project.root);
+      const npmName = pickInstalledName(before, after, source);
       if (!npmName) {
         return fail2("\u7121\u6CD5\u5224\u65B7\u5B89\u88DD\u7684 npm \u5957\u4EF6\u540D\uFF1B\u8ACB\u78BA\u8A8D\u5B89\u88DD\u6210\u529F\uFF08\u6216\u5957\u4EF6\u5DF2\u5B58\u5728\u6642\uFF0C\u7528\u5957\u4EF6\u540D\u7576\u4F86\u6E90\uFF09\u3002");
       }

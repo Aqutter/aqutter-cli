@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { applyPubspecBlock, parseDescriptor, PUBSPEC_BEGIN, PUBSPEC_END, renderPluginsDart, renderPubspecBlock } from '../src/plugins.ts'
-import { toClassName, toSnake } from '../src/commands/plugin.ts'
+import { pickInstalledName, toClassName, toSnake } from '../src/commands/plugin.ts'
 import { detectFramework, toAppName, toCamel, toDisplayName, usePathDependency } from '../src/commands/init.ts'
 import { substitute } from '../src/template.ts'
 
@@ -113,5 +113,36 @@ describe('template packaging', () => {
     expect(names).toContain('app/_gitignore')
     expect(names).toContain('plugin/_gitignore')
     expect(names).toContain('app/android/_gitignore')
+  })
+})
+
+describe('pickInstalledName', () => {
+  const specs = (entries: Record<string, string>): ReadonlyMap<string, string> => new Map(Object.entries(entries))
+  const FILE = 'file:C:/plugins/aqutter-plugin-maps'
+
+  it('picks the dependency that was added', () => {
+    expect(pickInstalledName(specs({ nuxt: '4.0.0' }), specs({ nuxt: '4.0.0', 'aqutter-plugin-maps': FILE }), FILE)).toBe('aqutter-plugin-maps')
+  })
+
+  it('picks the dependency whose source was replaced (already installed from somewhere else)', () => {
+    const before = specs({ 'aqutter-plugin-maps': 'github:Aqutter/aqutter-plugin-google-maps', nuxt: '4.0.0' })
+    const after = specs({ 'aqutter-plugin-maps': FILE, nuxt: '4.0.0' })
+    expect(pickInstalledName(before, after, FILE)).toBe('aqutter-plugin-maps')
+  })
+
+  it('accepts the package name itself as the source', () => {
+    const both = specs({ 'aqutter-plugin-maps': 'github:Aqutter/aqutter-plugin-google-maps' })
+    expect(pickInstalledName(both, both, 'aqutter-plugin-maps')).toBe('aqutter-plugin-maps')
+  })
+
+  it('recognises a repeated run of the same command (the source equals an existing dependency spec)', () => {
+    // Windows: the .bin .CMD shim is rewritten by `pnpm add` and cmd.exe runs the node line a second time.
+    const both = specs({ 'aqutter-plugin-maps': FILE, nuxt: '4.0.0' })
+    expect(pickInstalledName(both, both, FILE)).toBe('aqutter-plugin-maps')
+  })
+
+  it('returns undefined when nothing identifies the package', () => {
+    const both = specs({ nuxt: '4.0.0' })
+    expect(pickInstalledName(both, both, 'file:C:/unknown')).toBeUndefined()
   })
 })

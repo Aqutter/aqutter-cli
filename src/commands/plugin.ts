@@ -46,13 +46,42 @@ const runPm = (pm: PackageManager, args: string[], cwd: string): void => {
   }
 }
 
-const readDependencyNames = (root: string): Set<string> => {
+/** package.json 的 dependencies／devDependencies：名稱對應到它的安裝來源（版本或 `github:`、`file:` 等）。 */
+export type DependencySpecs = ReadonlyMap<string, string>
+
+const readDependencySpecs = (root: string): DependencySpecs => {
   const file = join(root, 'package.json')
   if (!existsSync(file)) {
-    return new Set()
+    return new Map()
   }
   const json = JSON.parse(readFileSync(file, 'utf8')) as Record<string, Record<string, string> | undefined>
-  return new Set([...Object.keys(json.dependencies ?? {}), ...Object.keys(json.devDependencies ?? {})])
+  return new Map(Object.entries({ ...json.devDependencies, ...json.dependencies }))
+}
+
+/**
+ * 判斷 `plugin add <來源>` 裝的是哪個 npm 套件。依序：
+ *   1. 安裝後新增的依賴；
+ *   2. 同名但來源被換掉的依賴（例如已用 `github:` 裝過，這次改用 `file:`——名稱前後都在，不是「新增」）；
+ *   3. 來源本身就是套件名；
+ *   4. 來源與某個依賴的來源完全相同（重複執行同一個指令）。
+ *
+ * 第 4 點是必要的：Windows 上經 `pnpm exec aqutter …` 啟動時，`pnpm add` 會重寫 `.bin` 裡的 `.CMD` 批次檔，
+ * cmd.exe 邊讀邊執行的檔案被換掉，會把尾端的 `node …` 再執行一次；第二次執行時依賴已經在 package.json 裡，
+ * 前面三點都找不到，沒有這一點就會誤報「無法判斷安裝的 npm 套件名」。
+ */
+export const pickInstalledName = (before: DependencySpecs, after: DependencySpecs, source: string): string | undefined => {
+  const added = [...after.keys()].find(name => !before.has(name))
+  if (added !== undefined) {
+    return added
+  }
+  const changed = [...after].find(([name, spec]) => before.has(name) && before.get(name) !== spec)
+  if (changed !== undefined) {
+    return changed[0]
+  }
+  if (after.has(source)) {
+    return source
+  }
+  return [...after].find(([, spec]) => spec === source)?.[0]
 }
 
 /** client 依賴字串 `github:Aqutter/aqutter-js#<ref>` 裡的 ref。 */
@@ -112,15 +141,17 @@ const add = (cwd: string, argv: string[]): void => {
   }
   const project = loadProject(cwd)
   const pm = detectPackageManager(project.root)
-  const before = readDependencyNames(project.root)
+  const before = readDependencySpecs(project.root)
 
-  if (!argv.includes('--no-install')) {
+  // 來源與既有依賴完全相同、且套件已經在 node_modules 裡：視為已安裝，不再呼叫套件管理器。
+  // 套件管理器會重寫 `.bin` 的批次檔（Windows 上會害正在執行的 cmd.exe 把指令再跑一次），能不跑就不跑。
+  const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync(join(project.root, 'node_modules', name, 'aqutter-plugin.json')))
+  if (!argv.includes('--no-install') && !alreadyInstalled) {
     runPm(pm, addArgs(pm, source), project.root)
   }
 
-  const after = readDependencyNames(project.root)
-  const added = [...after].filter(name => !before.has(name))
-  const npmName = added[0] ?? (before.has(source) ? source : undefined)
+  const after = readDependencySpecs(project.root)
+  const npmName = pickInstalledName(before, after, source)
   if (!npmName) {
     return fail('無法判斷安裝的 npm 套件名；請確認安裝成功（或套件已存在時，用套件名當來源）。')
   }
