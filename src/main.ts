@@ -10,7 +10,8 @@ const HELP = `aqutter ${pkg.version}
   dev [target]         同跑網頁 dev server 與 flutter run（target: macos|windows|linux|ios|ios-device|android|<device id>）
   seed                 產生靜態網頁並打包種子網頁包（同時交付 web_<env>_<版本>.zip）
   build <platform>     打包 App（apk|aab|ios|ipa|macos|windows|linux），含種子、簽章、交付
-  env add|list|remove  管理設定檔裡的命名環境（env 檔、flavor、簽章、網頁指令覆蓋）
+  bundle keygen|sign   網頁包簽章：產生簽署金鑰；對 seed 產出的 web_<env>_<版本>.zip 簽章（設了公鑰的 App 才會接受更新）
+  env add|list|remove管理設定檔裡的命名環境（env 檔、flavor、簽章、網頁指令覆蓋）
   flavor add [<name>]  為 Android / iOS / macOS 新增 flavor
   android gen-jks      產生 Android 簽章用 keystore 與 key.properties
   plugin create <name> 產生 Aqutter plugin 專案
@@ -37,6 +38,11 @@ const main = async (): Promise<void> => {
   if (command === 'init') {
     const { runInit } = await import('./commands/init.ts')
     await runInit(process.cwd(), rest)
+    return
+  }
+  if (command === 'bundle') {
+    const { runBundle } = await import('./commands/bundle.ts')
+    runBundle(process.cwd(), rest)
     return
   }
   if (command === 'plugin') {

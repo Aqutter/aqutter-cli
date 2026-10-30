@@ -2,7 +2,7 @@
 
 [Aqutter](https://github.com/Aqutter/aqutter) 框架的命令列工具（指令 `aqutter`）：把既有的網頁專案包成原生 App——網頁跑在 Flutter 殼的 WebView 裡。
 
-提供 `init`、`dev`、`seed`、`build`、`env`、`flavor add`、`android gen-jks`、`plugin …`、`doctor`、`upgrade`。完整說明見 Aqutter 的[文件](https://github.com/Aqutter/aqutter/tree/main/docs)。
+提供 `init`、`dev`、`seed`、`build`、`bundle keygen|sign`、`env`、`flavor add`、`android gen-jks`、`plugin …`、`doctor`、`upgrade`。完整說明見 Aqutter 的[文件](https://github.com/Aqutter/aqutter/tree/main/docs)。
 
 ## 安裝
 

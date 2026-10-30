@@ -278,14 +278,14 @@ var init_shared = __esm({
     };
     PORT_PROBE_TIMEOUT_MS = 500;
     isPortInUse = async (port) => {
-      const probe = (host) => new Promise((resolve5) => {
+      const probe = (host) => new Promise((resolve6) => {
         const socket = connect({
           port,
           host
         });
         const done = (inUse) => {
           socket.destroy();
-          resolve5(inUse);
+          resolve6(inUse);
         };
         socket.setTimeout(PORT_PROBE_TIMEOUT_MS, () => done(false));
         socket.once("connect", () => done(true));
@@ -296,7 +296,7 @@ var init_shared = __esm({
     };
     waitForHttpReady = async (urls, options) => {
       const fetchFn = options.fetchFn ?? (async (url) => fetch(url, { signal: AbortSignal.timeout(Math.max(options.intervalMs * 4, 2e3)) }));
-      const sleepFn = options.sleepFn ?? (async (ms) => new Promise((resolve5) => setTimeout(resolve5, ms)));
+      const sleepFn = options.sleepFn ?? (async (ms) => new Promise((resolve6) => setTimeout(resolve6, ms)));
       const now = options.now ?? Date.now;
       const started = now();
       for (; ; ) {
@@ -400,9 +400,9 @@ var init_shared = __esm({
           bufferedLines.push(line);
           return;
         }
-        const resolve5 = resolvePendingLine;
+        const resolve6 = resolvePendingLine;
         resolvePendingLine = null;
-        resolve5(line);
+        resolve6(line);
       });
       rl.on("close", () => {
         if (resolvePendingLine !== null) {
@@ -414,8 +414,8 @@ var init_shared = __esm({
         if (buffered !== void 0) {
           return Promise.resolve(buffered);
         }
-        return new Promise((resolve5) => {
-          resolvePendingLine = resolve5;
+        return new Promise((resolve6) => {
+          resolvePendingLine = resolve6;
         });
       };
       let masked = false;
@@ -480,7 +480,7 @@ var init_manifestSnapshot = __esm({
   "src/manifestSnapshot.json"() {
     manifestSnapshot_default = {
       schema: 1,
-      generatedAt: "2026-10-22T10:00:00Z",
+      generatedAt: "2026-10-28T12:59:30Z",
       channels: {
         stable: "0.0.0"
       },
@@ -494,14 +494,14 @@ var init_manifestSnapshot = __esm({
           shell: {
             url: "https://github.com/Aqutter/aqutter.git",
             path: "shell",
-            ref: "b0c98656e1466e1a7106f6dd5ba723596af06e72"
+            ref: "4798e3d41530418651d7ac443700c3b5efeae8af"
           },
           core: {
             url: "https://github.com/Aqutter/aqutter_core.git",
-            ref: "bc3e63372ea663e76feed1c076d0fe278b8236b0"
+            ref: "25b293f24343366d347f9738afd087ae7968b147"
           },
           client: {
-            spec: "github:Aqutter/aqutter-js#2f5de5d2a4ea9808d402658bb1c53a54cd535911"
+            spec: "github:Aqutter/aqutter-js#c3efd8bccf49bef266fa50c4c318d6750f96e60a"
           },
           cli: {
             min: "0.0.0"
@@ -1589,9 +1589,1170 @@ ${missing.join("\n")}
   }
 });
 
+// node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs
+import { createRequire } from "module";
+function deflateSync(data, opts) {
+  return dopt(data, opts || {}, 0, 0);
+}
+function inflateSync(data, opts) {
+  return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
+}
+function strToU8(str, latin1) {
+  if (latin1) {
+    var ar_1 = new u8(str.length);
+    for (var i = 0; i < str.length; ++i)
+      ar_1[i] = str.charCodeAt(i);
+    return ar_1;
+  }
+  if (te)
+    return te.encode(str);
+  var l = str.length;
+  var ar = new u8(str.length + (str.length >> 1));
+  var ai = 0;
+  var w = function(v) {
+    ar[ai++] = v;
+  };
+  for (var i = 0; i < l; ++i) {
+    if (ai + 5 > ar.length) {
+      var n = new u8(ai + 8 + (l - i << 1));
+      n.set(ar);
+      ar = n;
+    }
+    var c = str.charCodeAt(i);
+    if (c < 128 || latin1)
+      w(c);
+    else if (c < 2048)
+      w(192 | c >> 6), w(128 | c & 63);
+    else if (c > 55295 && c < 57344)
+      c = 65536 + (c & 1023 << 10) | str.charCodeAt(++i) & 1023, w(240 | c >> 18), w(128 | c >> 12 & 63), w(128 | c >> 6 & 63), w(128 | c & 63);
+    else
+      w(224 | c >> 12), w(128 | c >> 6 & 63), w(128 | c & 63);
+  }
+  return slc(ar, 0, ai);
+}
+function strFromU8(dat, latin1) {
+  if (latin1) {
+    var r = "";
+    for (var i = 0; i < dat.length; i += 16384)
+      r += String.fromCharCode.apply(null, dat.subarray(i, i + 16384));
+    return r;
+  } else if (td) {
+    return td.decode(dat);
+  } else {
+    var _a2 = dutf8(dat), s = _a2.s, r = _a2.r;
+    if (r.length)
+      err(8);
+    return s;
+  }
+}
+function zipSync(data, opts) {
+  if (!opts)
+    opts = {};
+  var r = {};
+  var files = [];
+  fltn(data, "", r, opts);
+  var o = 0;
+  var tot = 0;
+  for (var fn in r) {
+    var _a2 = r[fn], file = _a2[0], p = _a2[1];
+    var compression = p.level == 0 ? 0 : 8;
+    var f = strToU8(fn), s = f.length;
+    var com = p.comment, m = com && strToU8(com), ms = m && m.length;
+    var exl = exfl(p.extra);
+    if (s > 65535)
+      err(11);
+    var d = compression ? deflateSync(file, p) : file, l = d.length;
+    var c = crc();
+    c.p(file);
+    files.push(mrg(p, {
+      size: file.length,
+      crc: c.d(),
+      c: d,
+      f,
+      m,
+      u: s != fn.length || m && com.length != ms,
+      o,
+      compression
+    }));
+    o += 30 + s + exl + l;
+    tot += 76 + 2 * (s + exl) + (ms || 0) + l;
+  }
+  var out = new u8(tot + 22), oe = o, cdl = tot - o;
+  for (var i = 0; i < files.length; ++i) {
+    var f = files[i];
+    wzh(out, f.o, f, f.f, f.u, f.c.length);
+    var badd = 30 + f.f.length + exfl(f.extra);
+    out.set(f.c, f.o + badd);
+    wzh(out, o, f, f.f, f.u, f.c.length, f.o, f.m), o += 16 + badd + (f.m ? f.m.length : 0);
+  }
+  wzf(out, o, files.length, cdl, oe);
+  return out;
+}
+function unzipSync(data, opts) {
+  var files = {};
+  var e = data.length - 22;
+  for (; b4(data, e) != 101010256; --e) {
+    if (!e || data.length - e > 65558)
+      err(13);
+  }
+  ;
+  var c = b2(data, e + 8);
+  if (!c)
+    return {};
+  var o = b4(data, e + 16);
+  var z = b4(data, e - 20) == 117853008;
+  if (z) {
+    var ze = b4(data, e - 12);
+    z = b4(data, ze) == 101075792;
+    if (z) {
+      c = b4(data, ze + 32);
+      o = b4(data, ze + 48);
+    }
+  }
+  var fltr = opts && opts.filter;
+  for (var i = 0; i < c; ++i) {
+    var _a2 = zh(data, o, z), c_2 = _a2[0], sc = _a2[1], su = _a2[2], fn = _a2[3], no = _a2[4], off = _a2[5], b = slzh(data, off);
+    o = no;
+    if (!fltr || fltr({
+      name: fn,
+      size: sc,
+      originalSize: su,
+      compression: c_2
+    })) {
+      if (!c_2)
+        files[fn] = slc(data, b, b + sc);
+      else if (c_2 == 8)
+        files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
+      else
+        err(14, "unknown compression type " + c_2);
+    }
+  }
+  return files;
+}
+var require2, _a, Worker, isMarkedAsUntransferable, u8, u16, i32, fleb, fdeb, clim, freb, _a, fl, revfl, _b, fd, revfd, rev, x, i, hMap, flt, i, i, i, i, fdt, i, flm, flrm, fdm, fdrm, max, bits, bits16, shft, slc, ec, err, inflt, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, deo, et, dflt, crct, crc, dopt, mrg, b2, b4, b8, wbytes, fltn, te, td, tds, dutf8, slzh, zh, z64hs, exfl, wzh, wzf;
+var init_esm = __esm({
+  "node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs"() {
+    require2 = createRequire("/");
+    try {
+      _a = require2("worker_threads"), Worker = _a.Worker, isMarkedAsUntransferable = _a.isMarkedAsUntransferable;
+    } catch (e) {
+    }
+    u8 = Uint8Array;
+    u16 = Uint16Array;
+    i32 = Int32Array;
+    fleb = new u8([
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      0,
+      /* unused */
+      0,
+      0,
+      /* impossible */
+      0
+    ]);
+    fdeb = new u8([
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      2,
+      2,
+      3,
+      3,
+      4,
+      4,
+      5,
+      5,
+      6,
+      6,
+      7,
+      7,
+      8,
+      8,
+      9,
+      9,
+      10,
+      10,
+      11,
+      11,
+      12,
+      12,
+      13,
+      13,
+      /* unused */
+      0,
+      0
+    ]);
+    clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+    freb = function(eb, start) {
+      var b = new u16(31);
+      for (var i = 0; i < 31; ++i) {
+        b[i] = start += 1 << eb[i - 1];
+      }
+      var r = new i32(b[30]);
+      for (var i = 1; i < 30; ++i) {
+        for (var j = b[i]; j < b[i + 1]; ++j) {
+          r[j] = j - b[i] << 5 | i;
+        }
+      }
+      return { b, r };
+    };
+    _a = freb(fleb, 2);
+    fl = _a.b;
+    revfl = _a.r;
+    fl[28] = 258, revfl[258] = 28;
+    _b = freb(fdeb, 0);
+    fd = _b.b;
+    revfd = _b.r;
+    rev = new u16(32768);
+    for (i = 0; i < 32768; ++i) {
+      x = (i & 43690) >> 1 | (i & 21845) << 1;
+      x = (x & 52428) >> 2 | (x & 13107) << 2;
+      x = (x & 61680) >> 4 | (x & 3855) << 4;
+      rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
+    }
+    hMap = (function(cd, mb, r) {
+      var s = cd.length;
+      var i = 0;
+      var l = new u16(mb);
+      for (; i < s; ++i) {
+        if (cd[i])
+          ++l[cd[i] - 1];
+      }
+      var le = new u16(mb);
+      for (i = 1; i < mb; ++i) {
+        le[i] = le[i - 1] + l[i - 1] << 1;
+      }
+      var co;
+      if (r) {
+        co = new u16(1 << mb);
+        var rvb = 15 - mb;
+        for (i = 0; i < s; ++i) {
+          if (cd[i]) {
+            var sv = i << 4 | cd[i];
+            var r_1 = mb - cd[i];
+            var v = le[cd[i] - 1]++ << r_1;
+            for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
+              co[rev[v] >> rvb] = sv;
+            }
+          }
+        }
+      } else {
+        co = new u16(s);
+        for (i = 0; i < s; ++i) {
+          if (cd[i]) {
+            co[i] = rev[le[cd[i] - 1]++] >> 15 - cd[i];
+          }
+        }
+      }
+      return co;
+    });
+    flt = new u8(288);
+    for (i = 0; i < 144; ++i)
+      flt[i] = 8;
+    for (i = 144; i < 256; ++i)
+      flt[i] = 9;
+    for (i = 256; i < 280; ++i)
+      flt[i] = 7;
+    for (i = 280; i < 288; ++i)
+      flt[i] = 8;
+    fdt = new u8(32);
+    for (i = 0; i < 32; ++i)
+      fdt[i] = 5;
+    flm = /* @__PURE__ */ hMap(flt, 9, 0);
+    flrm = /* @__PURE__ */ hMap(flt, 9, 1);
+    fdm = /* @__PURE__ */ hMap(fdt, 5, 0);
+    fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
+    max = function(a) {
+      var m = a[0];
+      for (var i = 1; i < a.length; ++i) {
+        if (a[i] > m)
+          m = a[i];
+      }
+      return m;
+    };
+    bits = function(d, p, m) {
+      var o = p / 8 | 0;
+      return (d[o] | d[o + 1] << 8) >> (p & 7) & m;
+    };
+    bits16 = function(d, p) {
+      var o = p / 8 | 0;
+      return (d[o] | d[o + 1] << 8 | d[o + 2] << 16) >> (p & 7);
+    };
+    shft = function(p) {
+      return (p + 7) / 8 | 0;
+    };
+    slc = function(v, s, e) {
+      if (s == null || s < 0)
+        s = 0;
+      if (e == null || e > v.length)
+        e = v.length;
+      return new u8(v.subarray(s, e));
+    };
+    ec = [
+      "unexpected EOF",
+      "invalid block type",
+      "invalid length/literal",
+      "invalid distance",
+      "stream finished",
+      "no stream handler",
+      ,
+      // determined by compression function
+      "no callback",
+      "invalid UTF-8 data",
+      "extra field too long",
+      "date not in range 1980-2099",
+      "filename too long",
+      "stream finishing",
+      "invalid zip data"
+      // determined by unknown compression method
+    ];
+    err = function(ind, msg, nt) {
+      var e = new Error(msg || ec[ind]);
+      e.code = ind;
+      if (Error.captureStackTrace)
+        Error.captureStackTrace(e, err);
+      if (!nt)
+        throw e;
+      return e;
+    };
+    inflt = function(dat, st, buf, dict) {
+      var sl = dat.length, dl = dict ? dict.length : 0;
+      if (!sl || st.f && !st.l)
+        return buf || new u8(0);
+      var noBuf = !buf;
+      var resize = noBuf || st.i != 2;
+      var noSt = st.i;
+      if (noBuf)
+        buf = new u8(sl * 3);
+      var cbuf = function(l2) {
+        var bl = buf.length;
+        if (l2 > bl) {
+          var nbuf = new u8(Math.max(bl * 2, l2));
+          nbuf.set(buf);
+          buf = nbuf;
+        }
+      };
+      var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+      var tbts = sl * 8;
+      do {
+        if (!lm) {
+          final = bits(dat, pos, 1);
+          var type = bits(dat, pos + 1, 3);
+          pos += 3;
+          if (!type) {
+            var s = shft(pos) + 4, l = dat[s - 4] | dat[s - 3] << 8, t = s + l;
+            if (t > sl) {
+              if (noSt)
+                err(0);
+              break;
+            }
+            if (resize)
+              cbuf(bt + l);
+            buf.set(dat.subarray(s, t), bt);
+            st.b = bt += l, st.p = pos = t * 8, st.f = final;
+            continue;
+          } else if (type == 1)
+            lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+          else if (type == 2) {
+            var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+            var tl = hLit + bits(dat, pos + 5, 31) + 1;
+            pos += 14;
+            var ldt = new u8(tl);
+            var clt = new u8(19);
+            for (var i = 0; i < hcLen; ++i) {
+              clt[clim[i]] = bits(dat, pos + i * 3, 7);
+            }
+            pos += hcLen * 3;
+            var clb = max(clt), clbmsk = (1 << clb) - 1;
+            var clm = hMap(clt, clb, 1);
+            for (var i = 0; i < tl; ) {
+              var r = clm[bits(dat, pos, clbmsk)];
+              pos += r & 15;
+              var s = r >> 4;
+              if (s < 16) {
+                ldt[i++] = s;
+              } else {
+                var c = 0, n = 0;
+                if (s == 16)
+                  n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i - 1];
+                else if (s == 17)
+                  n = 3 + bits(dat, pos, 7), pos += 3;
+                else if (s == 18)
+                  n = 11 + bits(dat, pos, 127), pos += 7;
+                while (n--)
+                  ldt[i++] = c;
+              }
+            }
+            var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+            lbt = max(lt);
+            dbt = max(dt);
+            lm = hMap(lt, lbt, 1);
+            dm = hMap(dt, dbt, 1);
+          } else
+            err(1);
+          if (pos > tbts) {
+            if (noSt)
+              err(0);
+            break;
+          }
+        }
+        if (resize)
+          cbuf(bt + 131072);
+        var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+        var lpos = pos;
+        for (; ; lpos = pos) {
+          var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+          pos += c & 15;
+          if (pos > tbts) {
+            if (noSt)
+              err(0);
+            break;
+          }
+          if (!c)
+            err(2);
+          if (sym < 256)
+            buf[bt++] = sym;
+          else if (sym == 256) {
+            lpos = pos, lm = null;
+            break;
+          } else {
+            var add2 = sym - 254;
+            if (sym > 264) {
+              var i = sym - 257, b = fleb[i];
+              add2 = bits(dat, pos, (1 << b) - 1) + fl[i];
+              pos += b;
+            }
+            var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+            if (!d)
+              err(3);
+            pos += d & 15;
+            var dt = fd[dsym];
+            if (dsym > 3) {
+              var b = fdeb[dsym];
+              dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+            }
+            if (pos > tbts) {
+              if (noSt)
+                err(0);
+              break;
+            }
+            if (resize)
+              cbuf(bt + 131072);
+            var end = bt + add2;
+            if (bt < dt) {
+              var shift = dl - dt, dend = Math.min(dt, end);
+              if (shift + bt < 0)
+                err(3);
+              for (; bt < dend; ++bt)
+                buf[bt] = dict[shift + bt];
+            }
+            for (; bt < end; ++bt)
+              buf[bt] = buf[bt - dt];
+          }
+        }
+        st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+        if (lm)
+          final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+      } while (!final);
+      return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+    };
+    wbits = function(d, p, v) {
+      v <<= p & 7;
+      var o = p / 8 | 0;
+      d[o] |= v;
+      d[o + 1] |= v >> 8;
+    };
+    wbits16 = function(d, p, v) {
+      v <<= p & 7;
+      var o = p / 8 | 0;
+      d[o] |= v;
+      d[o + 1] |= v >> 8;
+      d[o + 2] |= v >> 16;
+    };
+    hTree = function(d, mb) {
+      var t = [];
+      for (var i = 0; i < d.length; ++i) {
+        if (d[i])
+          t.push({ s: i, f: d[i] });
+      }
+      var s = t.length;
+      var t2 = t.slice();
+      if (!s)
+        return { t: et, l: 0 };
+      if (s == 1) {
+        var v = new u8(t[0].s + 1);
+        v[t[0].s] = 1;
+        return { t: v, l: 1 };
+      }
+      t.sort(function(a, b) {
+        return a.f - b.f;
+      });
+      t.push({ s: -1, f: 25001 });
+      var l = t[0], r = t[1], i0 = 0, i1 = 1, i2 = 2;
+      t[0] = { s: -1, f: l.f + r.f, l, r };
+      while (i1 != s - 1) {
+        l = t[t[i0].f < t[i2].f ? i0++ : i2++];
+        r = t[i0 != i1 && t[i0].f < t[i2].f ? i0++ : i2++];
+        t[i1++] = { s: -1, f: l.f + r.f, l, r };
+      }
+      var maxSym = t2[0].s;
+      for (var i = 1; i < s; ++i) {
+        if (t2[i].s > maxSym)
+          maxSym = t2[i].s;
+      }
+      var tr = new u16(maxSym + 1);
+      var mbt = ln(t[i1 - 1], tr, 0);
+      if (mbt > mb) {
+        var i = 0, dt = 0;
+        var lft = mbt - mb, cst = 1 << lft;
+        t2.sort(function(a, b) {
+          return tr[b.s] - tr[a.s] || a.f - b.f;
+        });
+        for (; i < s; ++i) {
+          var i2_1 = t2[i].s;
+          if (tr[i2_1] > mb) {
+            dt += cst - (1 << mbt - tr[i2_1]);
+            tr[i2_1] = mb;
+          } else
+            break;
+        }
+        dt >>= lft;
+        while (dt > 0) {
+          var i2_2 = t2[i].s;
+          if (tr[i2_2] < mb)
+            dt -= 1 << mb - tr[i2_2]++ - 1;
+          else
+            ++i;
+        }
+        for (; i >= 0 && dt; --i) {
+          var i2_3 = t2[i].s;
+          if (tr[i2_3] == mb) {
+            --tr[i2_3];
+            ++dt;
+          }
+        }
+        mbt = mb;
+      }
+      return { t: new u8(tr), l: mbt };
+    };
+    ln = function(n, l, d) {
+      return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
+    };
+    lc = function(c) {
+      var s = c.length;
+      while (s && !c[--s])
+        ;
+      var cl = new u16(++s);
+      var cli = 0, cln = c[0], cls = 1;
+      var w = function(v) {
+        cl[cli++] = v;
+      };
+      for (var i = 1; i <= s; ++i) {
+        if (c[i] == cln && i != s)
+          ++cls;
+        else {
+          if (!cln && cls > 2) {
+            for (; cls > 138; cls -= 138)
+              w(32754);
+            if (cls > 2) {
+              w(cls > 10 ? cls - 11 << 5 | 28690 : cls - 3 << 5 | 12305);
+              cls = 0;
+            }
+          } else if (cls > 3) {
+            w(cln), --cls;
+            for (; cls > 6; cls -= 6)
+              w(8304);
+            if (cls > 2)
+              w(cls - 3 << 5 | 8208), cls = 0;
+          }
+          while (cls--)
+            w(cln);
+          cls = 1;
+          cln = c[i];
+        }
+      }
+      return { c: cl.subarray(0, cli), n: s };
+    };
+    clen = function(cf, cl) {
+      var l = 0;
+      for (var i = 0; i < cl.length; ++i)
+        l += cf[i] * cl[i];
+      return l;
+    };
+    wfblk = function(out, pos, dat) {
+      var s = dat.length;
+      var o = shft(pos + 2);
+      out[o] = s & 255;
+      out[o + 1] = s >> 8;
+      out[o + 2] = out[o] ^ 255;
+      out[o + 3] = out[o + 1] ^ 255;
+      for (var i = 0; i < s; ++i)
+        out[o + i + 4] = dat[i];
+      return (o + 4 + s) * 8;
+    };
+    wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
+      wbits(out, p++, final);
+      ++lf[256];
+      var _a2 = hTree(lf, 15), dlt = _a2.t, mlb = _a2.l;
+      var _b2 = hTree(df, 15), ddt = _b2.t, mdb = _b2.l;
+      var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
+      var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
+      var lcfreq = new u16(19);
+      for (var i = 0; i < lclt.length; ++i)
+        ++lcfreq[lclt[i] & 31];
+      for (var i = 0; i < lcdt.length; ++i)
+        ++lcfreq[lcdt[i] & 31];
+      var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
+      var nlcc = 19;
+      for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
+        ;
+      var flen = bl + 5 << 3;
+      var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
+      var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
+      if (bs >= 0 && flen <= ftlen && flen <= dtlen)
+        return wfblk(out, p, dat.subarray(bs, bs + bl));
+      var lm, ll, dm, dl;
+      wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
+      if (dtlen < ftlen) {
+        lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
+        var llm = hMap(lct, mlcb, 0);
+        wbits(out, p, nlc - 257);
+        wbits(out, p + 5, ndc - 1);
+        wbits(out, p + 10, nlcc - 4);
+        p += 14;
+        for (var i = 0; i < nlcc; ++i)
+          wbits(out, p + 3 * i, lct[clim[i]]);
+        p += 3 * nlcc;
+        var lcts = [lclt, lcdt];
+        for (var it = 0; it < 2; ++it) {
+          var clct = lcts[it];
+          for (var i = 0; i < clct.length; ++i) {
+            var len = clct[i] & 31;
+            wbits(out, p, llm[len]), p += lct[len];
+            if (len > 15)
+              wbits(out, p, clct[i] >> 5 & 127), p += clct[i] >> 12;
+          }
+        }
+      } else {
+        lm = flm, ll = flt, dm = fdm, dl = fdt;
+      }
+      for (var i = 0; i < li; ++i) {
+        var sym = syms[i];
+        if (sym > 255) {
+          var len = sym >> 18 & 31;
+          wbits16(out, p, lm[len + 257]), p += ll[len + 257];
+          if (len > 7)
+            wbits(out, p, sym >> 23 & 31), p += fleb[len];
+          var dst = sym & 31;
+          wbits16(out, p, dm[dst]), p += dl[dst];
+          if (dst > 3)
+            wbits16(out, p, sym >> 5 & 8191), p += fdeb[dst];
+        } else {
+          wbits16(out, p, lm[sym]), p += ll[sym];
+        }
+      }
+      wbits16(out, p, lm[256]);
+      return p + ll[256];
+    };
+    deo = /* @__PURE__ */ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
+    et = /* @__PURE__ */ new u8(0);
+    dflt = function(dat, lvl, plvl, pre, post, st) {
+      var s = st.z || dat.length;
+      var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7e3)) + post);
+      var w = o.subarray(pre, o.length - post);
+      var lst = st.l;
+      var pos = (st.r || 0) & 7;
+      if (lvl) {
+        if (pos)
+          w[0] = st.r >> 3;
+        var opt = deo[lvl - 1];
+        var n = opt >> 13, c = opt & 8191;
+        var msk_1 = (1 << plvl) - 1;
+        var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
+        var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
+        var hsh = function(i2) {
+          return (dat[i2] ^ dat[i2 + 1] << bs1_1 ^ dat[i2 + 2] << bs2_1) & msk_1;
+        };
+        var syms = new i32(25e3);
+        var lf = new u16(288), df = new u16(32);
+        var lc_1 = 0, eb = 0, i = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
+        for (; i + 2 < s; ++i) {
+          var hv = hsh(i);
+          var imod = i & 32767, pimod = head[hv];
+          prev[imod] = pimod;
+          head[hv] = imod;
+          if (wi <= i) {
+            var rem = s - i;
+            if ((lc_1 > 7e3 || li > 24576) && (rem > 423 || !lst)) {
+              pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i - bs, pos);
+              li = lc_1 = eb = 0, bs = i;
+              for (var j = 0; j < 286; ++j)
+                lf[j] = 0;
+              for (var j = 0; j < 30; ++j)
+                df[j] = 0;
+            }
+            var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+            if (rem > 2 && hv == hsh(i - dif)) {
+              var maxn = Math.min(n, rem) - 1;
+              var maxd = Math.min(32767, i);
+              var ml = Math.min(258, rem);
+              while (dif <= maxd && --ch_1 && imod != pimod) {
+                if (dat[i + l] == dat[i + l - dif]) {
+                  var nl = 0;
+                  for (; nl < ml && dat[i + nl] == dat[i + nl - dif]; ++nl)
+                    ;
+                  if (nl > l) {
+                    l = nl, d = dif;
+                    if (nl > maxn)
+                      break;
+                    var mmd = Math.min(dif, nl - 2);
+                    var md = 0;
+                    for (var j = 0; j < mmd; ++j) {
+                      var ti = i - dif + j & 32767;
+                      var pti = prev[ti];
+                      var cd = ti - pti & 32767;
+                      if (cd > md)
+                        md = cd, pimod = ti;
+                    }
+                  }
+                }
+                imod = pimod, pimod = prev[imod];
+                dif += imod - pimod & 32767;
+              }
+            }
+            if (d) {
+              syms[li++] = 268435456 | revfl[l] << 18 | revfd[d];
+              var lin = revfl[l] & 31, din = revfd[d] & 31;
+              eb += fleb[lin] + fdeb[din];
+              ++lf[257 + lin];
+              ++df[din];
+              wi = i + l;
+              ++lc_1;
+            } else {
+              syms[li++] = dat[i];
+              ++lf[dat[i]];
+            }
+          }
+        }
+        for (i = Math.max(i, wi); i < s; ++i) {
+          syms[li++] = dat[i];
+          ++lf[dat[i]];
+        }
+        pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i - bs, pos);
+        if (!lst) {
+          st.r = pos & 7 | w[pos / 8 | 0] << 3;
+          pos -= 7;
+          st.h = head, st.p = prev, st.i = i, st.w = wi;
+        }
+      } else {
+        for (var i = st.w || 0; i < s + lst; i += 65535) {
+          var e = i + 65535;
+          if (e >= s) {
+            w[pos / 8 | 0] = lst;
+            e = s;
+          }
+          pos = wfblk(w, pos + 1, dat.subarray(i, e));
+        }
+        st.i = s;
+      }
+      return slc(o, 0, pre + shft(pos) + post);
+    };
+    crct = /* @__PURE__ */ (function() {
+      var t = new Int32Array(256);
+      for (var i = 0; i < 256; ++i) {
+        var c = i, k = 9;
+        while (--k)
+          c = (c & 1 && -306674912) ^ c >>> 1;
+        t[i] = c;
+      }
+      return t;
+    })();
+    crc = function() {
+      var c = -1;
+      return {
+        p: function(d) {
+          var cr = c;
+          for (var i = 0; i < d.length; ++i)
+            cr = crct[cr & 255 ^ d[i]] ^ cr >>> 8;
+          c = cr;
+        },
+        d: function() {
+          return ~c;
+        }
+      };
+    };
+    dopt = function(dat, opt, pre, post, st) {
+      if (!st) {
+        st = { l: 1 };
+        if (opt.dictionary) {
+          var dict = opt.dictionary.subarray(-32768);
+          var newDat = new u8(dict.length + dat.length);
+          newDat.set(dict);
+          newDat.set(dat, dict.length);
+          dat = newDat;
+          st.w = dict.length;
+        }
+      }
+      return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
+    };
+    mrg = function(a, b) {
+      var o = {};
+      for (var k in a)
+        o[k] = a[k];
+      for (var k in b)
+        o[k] = b[k];
+      return o;
+    };
+    b2 = function(d, b) {
+      return d[b] | d[b + 1] << 8;
+    };
+    b4 = function(d, b) {
+      return (d[b] | d[b + 1] << 8 | d[b + 2] << 16 | d[b + 3] << 24) >>> 0;
+    };
+    b8 = function(d, b) {
+      return b4(d, b) + b4(d, b + 4) * 4294967296;
+    };
+    wbytes = function(d, b, v) {
+      for (; v; ++b)
+        d[b] = v, v >>>= 8;
+    };
+    fltn = function(d, p, t, o) {
+      for (var k in d) {
+        var val = d[k], n = p + k, op = o;
+        if (Array.isArray(val))
+          op = mrg(o, val[1]), val = val[0];
+        if (ArrayBuffer.isView(val))
+          t[n] = [val, op];
+        else {
+          t[n += "/"] = [new u8(0), op];
+          fltn(val, n, t, o);
+        }
+      }
+    };
+    te = typeof TextEncoder != "undefined" && /* @__PURE__ */ new TextEncoder();
+    td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
+    tds = 0;
+    try {
+      td.decode(et, { stream: true });
+      tds = 1;
+    } catch (e) {
+    }
+    dutf8 = function(d) {
+      for (var r = "", i = 0; ; ) {
+        var c = d[i++];
+        var eb = (c > 127) + (c > 223) + (c > 239);
+        if (i + eb > d.length)
+          return { s: r, r: slc(d, i - 1) };
+        if (!eb)
+          r += String.fromCharCode(c);
+        else if (eb == 3) {
+          c = ((c & 15) << 18 | (d[i++] & 63) << 12 | (d[i++] & 63) << 6 | d[i++] & 63) - 65536, r += String.fromCharCode(55296 | c >> 10, 56320 | c & 1023);
+        } else if (eb & 1)
+          r += String.fromCharCode((c & 31) << 6 | d[i++] & 63);
+        else
+          r += String.fromCharCode((c & 15) << 12 | (d[i++] & 63) << 6 | d[i++] & 63);
+      }
+    };
+    slzh = function(d, b) {
+      return b + 30 + b2(d, b + 26) + b2(d, b + 28);
+    };
+    zh = function(d, b, z) {
+      var fnl = b2(d, b + 28), efl = b2(d, b + 30), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl;
+      var _a2 = z64hs(d, es, efl, z, b4(d, b + 20), b4(d, b + 24), b4(d, b + 42)), sc = _a2[0], su = _a2[1], off = _a2[2];
+      return [b2(d, b + 10), sc, su, fn, es + efl + b2(d, b + 32), off];
+    };
+    z64hs = function(d, b, l, z, sc, su, off) {
+      var nsc = sc == 4294967295, nsu = su == 4294967295, noff = off == 4294967295, e = b + l;
+      var nf = nsc + nsu + noff;
+      if (z && nf) {
+        for (; b + 4 < e; b += 4 + b2(d, b + 2)) {
+          if (b2(d, b) == 1) {
+            return [
+              nsc ? b8(d, b + 4 + 8 * nsu) : sc,
+              nsu ? b8(d, b + 4) : su,
+              noff ? b8(d, b + 4 + 8 * (nsu + nsc)) : off,
+              1
+            ];
+          }
+        }
+        if (z < 2)
+          err(13);
+      }
+      return [sc, su, off, 0];
+    };
+    exfl = function(ex) {
+      var le = 0;
+      if (ex) {
+        for (var k in ex) {
+          var l = ex[k].length;
+          if (l > 65535)
+            err(9);
+          le += l + 4;
+        }
+      }
+      return le;
+    };
+    wzh = function(d, b, f, fn, u, c, ce, co) {
+      var fl2 = fn.length, ex = f.extra, col = co && co.length;
+      var exl = exfl(ex);
+      wbytes(d, b, ce != null ? 33639248 : 67324752), b += 4;
+      if (ce != null)
+        d[b++] = 20, d[b++] = f.os;
+      d[b] = 20, b += 2;
+      d[b++] = f.flag << 1 | (c < 0 && 8), d[b++] = u && 8;
+      d[b++] = f.compression & 255, d[b++] = f.compression >> 8;
+      var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
+      if (y < 0 || y > 119)
+        err(10);
+      wbytes(d, b, y << 25 | dt.getMonth() + 1 << 21 | dt.getDate() << 16 | dt.getHours() << 11 | dt.getMinutes() << 5 | dt.getSeconds() >> 1), b += 4;
+      if (c != -1) {
+        wbytes(d, b, f.crc);
+        wbytes(d, b + 4, c < 0 ? -c - 2 : c);
+        wbytes(d, b + 8, f.size);
+      }
+      wbytes(d, b + 12, fl2);
+      wbytes(d, b + 14, exl), b += 16;
+      if (ce != null) {
+        wbytes(d, b, col);
+        wbytes(d, b + 6, f.attrs);
+        wbytes(d, b + 10, ce), b += 14;
+      }
+      d.set(fn, b);
+      b += fl2;
+      if (exl) {
+        for (var k in ex) {
+          var exf = ex[k], l = exf.length;
+          wbytes(d, b, +k);
+          wbytes(d, b + 2, l);
+          d.set(exf, b + 4), b += 4 + l;
+        }
+      }
+      if (col)
+        d.set(co, b), b += col;
+      return b;
+    };
+    wzf = function(o, b, c, d, e) {
+      wbytes(o, b, 101010256);
+      wbytes(o, b + 8, c);
+      wbytes(o, b + 10, c);
+      wbytes(o, b + 12, d);
+      wbytes(o, b + 16, e);
+    };
+  }
+});
+
+// src/commands/bundle.ts
+var bundle_exports = {};
+__export(bundle_exports, {
+  BUNDLE_SIGNATURE_PREFIX: () => BUNDLE_SIGNATURE_PREFIX,
+  DEFAULT_KEY_DIR: () => DEFAULT_KEY_DIR,
+  PRIVATE_KEY_FILE: () => PRIVATE_KEY_FILE,
+  SIGNING_KEY_ENV: () => SIGNING_KEY_ENV,
+  bundleSignatureMessage: () => bundleSignatureMessage,
+  generateSigningKey: () => generateSigningKey,
+  publicKeyBase64: () => publicKeyBase64,
+  readBundleVersion: () => readBundleVersion,
+  runBundle: () => runBundle,
+  runKeygen: () => runKeygen,
+  runSign: () => runSign,
+  signBundle: () => signBundle
+});
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
+import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join7, resolve as resolve4 } from "node:path";
+var BUNDLE_SIGNATURE_PREFIX, DEFAULT_KEY_DIR, PRIVATE_KEY_FILE, SIGNING_KEY_ENV, VERSION_ENTRY, bundleSignatureMessage, publicKeyBase64, generateSigningKey, readBundleVersion, signBundle, parseBundleArgs, USAGE, runKeygen, loadPrivateKey, runSign, runBundle;
+var init_bundle = __esm({
+  "src/commands/bundle.ts"() {
+    "use strict";
+    init_esm();
+    init_config();
+    BUNDLE_SIGNATURE_PREFIX = "aqutter-bundle-v1";
+    DEFAULT_KEY_DIR = ".aqutter-keys";
+    PRIVATE_KEY_FILE = "bundle-signing.key";
+    SIGNING_KEY_ENV = "AQUTTER_BUNDLE_SIGNING_KEY";
+    VERSION_ENTRY = "version.json";
+    bundleSignatureMessage = (version, sha256Hex) => {
+      return Buffer.from(`${BUNDLE_SIGNATURE_PREFIX}
+${version}
+${sha256Hex.toLowerCase()}
+`, "utf8");
+    };
+    publicKeyBase64 = (privateKeyPem) => {
+      const spki = createPublicKey(createPrivateKey(privateKeyPem)).export({ format: "der", type: "spki" });
+      return spki.subarray(spki.length - 32).toString("base64");
+    };
+    generateSigningKey = () => {
+      const { privateKey } = generateKeyPairSync("ed25519");
+      const privatePem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+      return { privatePem, publicKey: publicKeyBase64(privatePem) };
+    };
+    readBundleVersion = (zip) => {
+      let entries;
+      try {
+        entries = unzipSync(zip, { filter: (file) => file.name === VERSION_ENTRY });
+      } catch {
+        throw new ConfigError("\u4E0D\u662F\u5408\u6CD5\u7684 zip \u6A94");
+      }
+      const raw = entries[VERSION_ENTRY];
+      if (raw === void 0) {
+        throw new ConfigError(`\u7DB2\u9801\u5305\u5167\u6C92\u6709 ${VERSION_ENTRY}`);
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(raw));
+      } catch {
+        throw new ConfigError(`\u7DB2\u9801\u5305\u5167\u7684 ${VERSION_ENTRY} \u4E0D\u662F\u5408\u6CD5\u7684 JSON`);
+      }
+      const version = parsed?.version;
+      if (typeof version !== "string" || version === "") {
+        throw new ConfigError(`\u7DB2\u9801\u5305\u5167\u7684 ${VERSION_ENTRY} \u7F3A\u5C11\u5B57\u4E32\u7684 version`);
+      }
+      return version;
+    };
+    signBundle = (zip, privateKeyPem) => {
+      const version = readBundleVersion(zip);
+      const sha256 = createHash("sha256").update(zip).digest("hex");
+      let key;
+      try {
+        key = createPrivateKey(privateKeyPem);
+      } catch {
+        throw new ConfigError("\u79C1\u9470\u4E0D\u662F\u5408\u6CD5\u7684 PEM");
+      }
+      if (key.asymmetricKeyType !== "ed25519") {
+        throw new ConfigError("\u79C1\u9470\u5FC5\u9808\u662F Ed25519");
+      }
+      const signature = sign(null, bundleSignatureMessage(version, sha256), key).toString("base64");
+      return { version, sha256, size: zip.length, signature };
+    };
+    parseBundleArgs = (argv) => {
+      const positional = [];
+      const flags = {};
+      let printJson = false;
+      for (let index = 0; index < argv.length; index++) {
+        const arg = argv[index];
+        if (arg === "--print-json") {
+          printJson = true;
+          continue;
+        }
+        const withValue = /^--(key|out)(?:=(.*))?$/.exec(arg);
+        if (withValue) {
+          const next = argv[index + 1];
+          if (withValue[2] !== void 0) {
+            flags[withValue[1]] = withValue[2];
+          } else if (next !== void 0 && !next.startsWith("--")) {
+            flags[withValue[1]] = next;
+            index += 1;
+          } else {
+            throw new ConfigError(`--${withValue[1]} \u9700\u8981\u503C`);
+          }
+          continue;
+        }
+        if (arg.startsWith("--")) {
+          throw new ConfigError(`\u672A\u77E5\u65D7\u6A19\u300C${arg}\u300D`);
+        }
+        positional.push(arg);
+      }
+      return { positional, flags, printJson };
+    };
+    USAGE = `\u7528\u6CD5\uFF1A
+  aqutter bundle keygen [--out=<\u8CC7\u6599\u593E>]
+  aqutter bundle sign <bundle.zip> --key=<\u79C1\u9470.pem> [--print-json]`;
+    runKeygen = (cwd, args) => {
+      if (args.positional.length > 0) {
+        throw new ConfigError(USAGE);
+      }
+      const dir = resolve4(cwd, args.flags.out ?? DEFAULT_KEY_DIR);
+      const keyFile = join7(dir, PRIVATE_KEY_FILE);
+      if (existsSync6(keyFile)) {
+        throw new ConfigError(`${keyFile} \u5DF2\u5B58\u5728\uFF0C\u4E0D\u8986\u84CB\u3002\u8981\u7522\u751F\u65B0\u7684\u91D1\u9470\u8ACB\u63DB\u4E00\u500B\u8CC7\u6599\u593E\uFF08--out\uFF09\u6216\u5148\u81EA\u884C\u8655\u7406\u820A\u6A94\u3002`);
+      }
+      const { privatePem, publicKey } = generateSigningKey();
+      mkdirSync5(dir, { recursive: true });
+      writeFileSync4(keyFile, privatePem, { flag: "wx", mode: 384 });
+      console.log(`\u5DF2\u7522\u751F\u79C1\u9470\uFF1A${keyFile}`);
+      console.log("\u79C1\u9470\u53EA\u7559\u5728\u7C3D\u7F72\u7AEF\uFF1A\u4E0D\u8981\u63D0\u4EA4\u9032\u7248\u63A7\u3001\u4E0D\u8981\u653E\u9032 App \u6216\u7DE8\u8B6F\u671F env\u3002\u5EFA\u8B70\u628A\u8CC7\u6599\u593E\u52A0\u5165 .gitignore\uFF0C\u4E26\u53E6\u5916\u5099\u4EFD\u5230\u5BC6\u78BC\u7BA1\u7406\u5668\u3002");
+      console.log("");
+      console.log("\u516C\u9470\uFF08\u4E0D\u662F\u6A5F\u5BC6\uFF09\uFF0C\u586B\u9032\u5404\u74B0\u5883 env \u6A94\u5F8C\u91CD\u7DE8 App\uFF1A");
+      console.log(`AQUTTER_UPDATE_PUBLIC_KEYS=${publicKey}`);
+    };
+    loadPrivateKey = (cwd, keyFlag) => {
+      if (keyFlag !== void 0) {
+        const file = resolve4(cwd, keyFlag);
+        if (!existsSync6(file)) {
+          throw new ConfigError(`\u627E\u4E0D\u5230\u79C1\u9470\u6A94\uFF1A${file}`);
+        }
+        return readFileSync7(file, "utf8");
+      }
+      const fromEnv = process.env[SIGNING_KEY_ENV];
+      if (fromEnv !== void 0 && fromEnv.trim() !== "") {
+        return fromEnv;
+      }
+      throw new ConfigError(`\u9700\u8981\u79C1\u9470\uFF1A\u7528 --key=<\u79C1\u9470.pem>\uFF0C\u6216\u8A2D\u5B9A\u74B0\u5883\u8B8A\u6578 ${SIGNING_KEY_ENV}\uFF08PEM \u5167\u5BB9\uFF09\u3002`);
+    };
+    runSign = (cwd, args) => {
+      if (args.positional.length !== 1) {
+        throw new ConfigError(USAGE);
+      }
+      const zipFile = resolve4(cwd, args.positional[0]);
+      if (!existsSync6(zipFile)) {
+        throw new ConfigError(`\u627E\u4E0D\u5230\u7DB2\u9801\u5305\uFF1A${zipFile}`);
+      }
+      const result = signBundle(new Uint8Array(readFileSync7(zipFile)), loadPrivateKey(cwd, args.flags.key));
+      const fields = { version: result.version, sha256: result.sha256, signature: result.signature, size: result.size };
+      if (args.printJson) {
+        console.log(JSON.stringify(fields));
+        return;
+      }
+      console.log("\u628A\u4E0B\u9762\u7684\u6B04\u4F4D\u653E\u9032\u66F4\u65B0\u4F3A\u670D\u5668\u7684 version.json\uFF08\u8207 url \u4E26\u5217\uFF09\uFF1A");
+      console.log(JSON.stringify(fields, null, 2));
+    };
+    runBundle = (cwd, argv) => {
+      const [sub, ...rest] = argv;
+      if (sub === "keygen") {
+        runKeygen(cwd, parseBundleArgs(rest));
+        return;
+      }
+      if (sub === "sign") {
+        runSign(cwd, parseBundleArgs(rest));
+        return;
+      }
+      throw new ConfigError(USAGE);
+    };
+  }
+});
+
 // src/plugins.ts
-import { existsSync as existsSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join7, relative as relative2 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { join as join8, relative as relative2 } from "node:path";
 var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, importOf, renderPluginsDart, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
 var init_plugins = __esm({
   "src/plugins.ts"() {
@@ -1660,7 +2821,7 @@ ${plugins.map((entry) => `  ${entry.dart.class}(),`).join("\n")}
     };
     renderPubspecBlock = (plugins, projectRoot, appDir) => {
       return plugins.flatMap((entry) => {
-        const path = relative2(appDir, join7(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
+        const path = relative2(appDir, join8(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
         return [`  ${entry.dart.package}:`, `    path: ${path}`];
       });
     };
@@ -1677,13 +2838,13 @@ ${middle}${pubspec.slice(end)}`;
     };
     syncPlugins = (project) => {
       const plugins = project.config.plugins;
-      const pubspecPath = join7(project.appDir, "pubspec.yaml");
-      const original = readFileSync7(pubspecPath, "utf8");
+      const pubspecPath = join8(project.appDir, "pubspec.yaml");
+      const original = readFileSync8(pubspecPath, "utf8");
       const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
       if (next !== original) {
-        writeFileSync4(pubspecPath, next);
+        writeFileSync5(pubspecPath, next);
       }
-      writeFileSync4(join7(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
+      writeFileSync5(join8(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
     };
     updateConfigPlugins = (project, update) => {
       const previous = project.config.plugins;
@@ -1695,29 +2856,29 @@ ${middle}${pubspec.slice(end)}`;
         project.config.plugins = previous;
         throw error;
       }
-      const file = join7(project.root, CONFIG_FILE);
-      const raw = JSON.parse(readFileSync7(file, "utf8"));
+      const file = join8(project.root, CONFIG_FILE);
+      const raw = JSON.parse(readFileSync8(file, "utf8"));
       if (next.length === 0) {
         delete raw.plugins;
       } else {
         raw.plugins = next;
       }
-      writeFileSync4(file, `${JSON.stringify(raw, null, 2)}
+      writeFileSync5(file, `${JSON.stringify(raw, null, 2)}
 `);
     };
     readInstalledDescriptor = (projectRoot, npmName) => {
-      const file = join7(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
-      if (!existsSync6(file)) {
+      const file = join8(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
+      if (!existsSync7(file)) {
         throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
       }
-      return parseDescriptor(JSON.parse(readFileSync7(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
+      return parseDescriptor(JSON.parse(readFileSync8(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
     };
   }
 });
 
 // src/web.ts
-import { existsSync as existsSync7, readFileSync as readFileSync8 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync9 } from "node:fs";
+import { join as join9 } from "node:path";
 var parseEnvFile, detectPackageManager, EXEC_PREFIX, execPrefixOf, execPrefix, installCommandOf, addArgs, withExec, envFromFile, shellInvocation, fill, nuxtAdapter, viteAdapter, nextAdapter, commandDev, commandGenerate, createWebAdapter;
 var init_web = __esm({
   "src/web.ts"() {
@@ -1726,7 +2887,7 @@ var init_web = __esm({
     init_shared();
     parseEnvFile = (path) => {
       const result = {};
-      for (const rawLine of readFileSync8(path, "utf8").split(/\r?\n/)) {
+      for (const rawLine of readFileSync9(path, "utf8").split(/\r?\n/)) {
         const line = rawLine.trim();
         if (line === "" || line.startsWith("#")) {
           continue;
@@ -1747,13 +2908,13 @@ var init_web = __esm({
       return result;
     };
     detectPackageManager = (root) => {
-      if (existsSync7(join8(root, "pnpm-lock.yaml"))) {
+      if (existsSync8(join9(root, "pnpm-lock.yaml"))) {
         return "pnpm";
       }
-      if (existsSync7(join8(root, "yarn.lock"))) {
+      if (existsSync8(join9(root, "yarn.lock"))) {
         return "yarn";
       }
-      if (existsSync7(join8(root, "bun.lock")) || existsSync7(join8(root, "bun.lockb"))) {
+      if (existsSync8(join9(root, "bun.lock")) || existsSync8(join9(root, "bun.lockb"))) {
         return "bun";
       }
       return "npm";
@@ -1772,7 +2933,7 @@ var init_web = __esm({
       const prefix = execPrefix(project);
       return { command: prefix.command, args: [...prefix.args, bin, ...args], env };
     };
-    envFromFile = (project, envFile) => parseEnvFile(join8(project.root, envFile));
+    envFromFile = (project, envFile) => parseEnvFile(join9(project.root, envFile));
     shellInvocation = (command) => {
       return IS_WIN ? { command: "cmd", args: ["/c", command] } : { command: "sh", args: ["-c", command] };
     };
@@ -1875,8 +3036,8 @@ __export(plugin_exports, {
   toSnake: () => toSnake
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync8, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join9, relative as relative3, resolve as resolve4 } from "node:path";
+import { existsSync as existsSync9, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "node:fs";
+import { isAbsolute as isAbsolute3, join as join10, relative as relative3, resolve as resolve5 } from "node:path";
 var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
@@ -1905,11 +3066,11 @@ var init_plugin = __esm({
       }
     };
     readDependencySpecs = (root) => {
-      const file = join9(root, "package.json");
-      if (!existsSync8(file)) {
+      const file = join10(root, "package.json");
+      if (!existsSync9(file)) {
         return /* @__PURE__ */ new Map();
       }
-      const json = JSON.parse(readFileSync9(file, "utf8"));
+      const json = JSON.parse(readFileSync10(file, "utf8"));
       return new Map(Object.entries({ ...json.devDependencies, ...json.dependencies }));
     };
     pickInstalledName = (before, after, source) => {
@@ -1934,8 +3095,8 @@ var init_plugin = __esm({
         return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
       }
       const dirName = flags.dir ?? `aqutter-plugin-${id}`;
-      const target = resolve4(cwd, dirName);
-      if (existsSync8(target)) {
+      const target = resolve5(cwd, dirName);
+      if (existsSync9(target)) {
         return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
       }
       let refs;
@@ -1958,12 +3119,12 @@ var init_plugin = __esm({
         shellRef: refs.shellRef,
         clientRef: refs.clientRef
       };
-      const { written } = renderTree(join9(findTemplateRoot(), "plugin"), target, variables);
+      const { written } = renderTree(join10(findTemplateRoot(), "plugin"), target, variables);
       if (flags["shell-path"]) {
         const shellFlag = flags["shell-path"];
-        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve4(cwd, shellFlag)).split("\\").join("/");
-        const pubspec = join9(target, "pubspec.yaml");
-        writeFileSync5(pubspec, usePathDependency(readFileSync9(pubspec, "utf8"), rel));
+        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve5(cwd, shellFlag)).split("\\").join("/");
+        const pubspec = join10(target, "pubspec.yaml");
+        writeFileSync6(pubspec, usePathDependency(readFileSync10(pubspec, "utf8"), rel));
       }
       console.log(`[${TAG3}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
       console.log("\n\u4E0B\u4E00\u6B65\uFF1A");
@@ -1979,7 +3140,7 @@ var init_plugin = __esm({
       const project = loadProject(cwd);
       const pm = detectPackageManager(project.root);
       const before = readDependencySpecs(project.root);
-      const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync8(join9(project.root, "node_modules", name, "aqutter-plugin.json")));
+      const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync9(join10(project.root, "node_modules", name, "aqutter-plugin.json")));
       if (!argv.includes("--no-install") && !alreadyInstalled) {
         runPm(pm, addArgs(pm, source), project.root);
       }
@@ -2043,8 +3204,8 @@ var init_plugin = __esm({
 });
 
 // src/environments.ts
-import { existsSync as existsSync9 } from "node:fs";
-import { join as join10 } from "node:path";
+import { existsSync as existsSync10 } from "node:fs";
+import { join as join11 } from "node:path";
 var normalize, defaultEnvFileOf, envFileOf, fromConfig, listConfigured, resolveEnvironment;
 var init_environments = __esm({
   "src/environments.ts"() {
@@ -2074,7 +3235,7 @@ var init_environments = __esm({
       const configured = Object.hasOwn(environments, value) ? environments[value] : void 0;
       if (configured) {
         const envFile2 = envFileOf(project, value, configured);
-        if (!existsSync9(join10(project.root, envFile2))) {
+        if (!existsSync10(join11(project.root, envFile2))) {
           return {
             ok: false,
             error: `\u74B0\u5883\u300C${value}\u300D\u7684 env \u6A94 \`${envFile2}\` \u4E0D\u5B58\u5728\u3002\u8ACB\u7531 ${project.config.envDir}/.env.example \u8907\u88FD\u4E00\u4EFD\uFF0C\u6216\u4FEE\u6B63 aqutter.config.json \u7684 environments.${value}.envFile\u3002`
@@ -2094,7 +3255,7 @@ var init_environments = __esm({
         };
       }
       const dir = project.config.envDir;
-      const conventional = ENVIRONMENT_NAME.test(value) && existsSync9(join10(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
+      const conventional = ENVIRONMENT_NAME.test(value) && existsSync10(join11(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
       const hint = conventional ? `\u5075\u6E2C\u5230 \`${conventional}\` \u5B58\u5728\uFF0C\u4F46\u300C${value}\u300D\u4E0D\u5728\u8A2D\u5B9A\u6A94\u88E1\uFF1A\u7528 \`aqutter env add ${value}\` \u767B\u8A18\u5B83\uFF0C\u6216\u6539\u7528 -e ${conventional}\u3002` : `\u4E5F\u53EF\u4EE5\u7D66\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF08\u4F8B\u5982 ${dir}/.env.uat\uFF09\u3002`;
       return { ok: false, error: `\u627E\u4E0D\u5230\u74B0\u5883\u6216 env \u6A94\u300C${value}\u300D\u3002${listConfigured(project)}${hint}` };
     };
@@ -2102,8 +3263,8 @@ var init_environments = __esm({
 });
 
 // src/menu.ts
-import { existsSync as existsSync10, readFileSync as readFileSync10, readdirSync as readdirSync3 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync11, readFileSync as readFileSync11, readdirSync as readdirSync3 } from "node:fs";
+import { join as join12 } from "node:path";
 var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists2, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
 var init_menu = __esm({
   "src/menu.ts"() {
@@ -2115,14 +3276,14 @@ var init_menu = __esm({
     SIGNING_PLATFORMS = ["ios", "macos", "windows"];
     envPathOf = (project, name) => `${project.config.envDir}/${ENV_PREFIX}${name}`;
     signingPathOf = (name) => `signing/signing.${name}.json`;
-    listDir = (dir) => existsSync10(dir) ? readdirSync3(dir) : [];
+    listDir = (dir) => existsSync11(dir) ? readdirSync3(dir) : [];
     listEnvFiles = (project) => {
-      return listDir(join11(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
+      return listDir(join12(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
         path: `${project.config.envDir}/${name}`,
         name: name.slice(ENV_PREFIX.length)
       }));
     };
-    readIfExists2 = (path) => existsSync10(path) ? readFileSync10(path, "utf8") : "";
+    readIfExists2 = (path) => existsSync11(path) ? readFileSync11(path, "utf8") : "";
     listFlavors = (project) => {
       const found = /* @__PURE__ */ new Map();
       const add2 = (name, platform) => {
@@ -2130,12 +3291,12 @@ var init_menu = __esm({
         platforms.add(platform);
         found.set(name, platforms);
       };
-      const gradle = readIfExists2(join11(project.appDir, "android", "app", "build.gradle.kts"));
+      const gradle = readIfExists2(join12(project.appDir, "android", "app", "build.gradle.kts"));
       for (const match of gradle.matchAll(/create\("([a-z][a-z0-9]*)"\)/g)) {
         add2(match[1], "android");
       }
       for (const platform of ["ios", "macos"]) {
-        const pbxproj = readIfExists2(join11(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
+        const pbxproj = readIfExists2(join12(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
         for (const match of pbxproj.matchAll(/name = "Release-([a-z][a-z0-9]*)";/g)) {
           add2(match[1], platform);
         }
@@ -2146,11 +3307,11 @@ var init_menu = __esm({
       }));
     };
     listSigningConfigs = (project) => {
-      const dir = join11(project.appDir, "signing");
+      const dir = join12(project.appDir, "signing");
       return listDir(dir).filter((name) => SIGNING_FILE.test(name) && !isExample(name)).sort().map((name) => {
         let platforms = [];
         try {
-          platforms = Object.keys(JSON.parse(readFileSync10(join11(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
+          platforms = Object.keys(JSON.parse(readFileSync11(join12(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
         } catch {
         }
         return {
@@ -2181,7 +3342,7 @@ var init_menu = __esm({
       let signingPath = flags.signing ?? null;
       if (withSigning && signingPath === null && xEnv) {
         const candidate = signingPathOf(xEnv);
-        if (existsSync10(join11(project.appDir, candidate))) {
+        if (existsSync11(join12(project.appDir, candidate))) {
           signingPath = candidate;
         } else {
           console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u627E\u4E0D\u5230 ${candidate}\uFF0C\u4E0D\u5E36 --signing\u3002`);
@@ -2239,9 +3400,9 @@ __export(dev_exports, {
   runDev: () => runDev
 });
 import { spawn, spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync11 } from "node:fs";
+import { existsSync as existsSync12 } from "node:fs";
 import { networkInterfaces } from "node:os";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 var TAG4, DEV_SERVER_WAIT_MS, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
 var init_dev = __esm({
   "src/commands/dev.ts"() {
@@ -2256,7 +3417,7 @@ var init_dev = __esm({
       console.error(`[${TAG4}] ${message}`);
       process.exit(1);
     };
-    sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
+    sleep = (ms) => new Promise((resolve6) => setTimeout(resolve6, ms));
     isIos = (device) => device.targetPlatform?.startsWith("ios") ?? false;
     isAndroid = (device) => device.targetPlatform?.startsWith("android") ?? false;
     DESKTOP_PLATFORMS = /* @__PURE__ */ new Set(["darwin", "windows-x64", "linux-x64"]);
@@ -2275,10 +3436,10 @@ var init_dev = __esm({
     };
     findAdb = () => {
       const candidates = [
-        join12(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
-        join12(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
+        join13(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
+        join13(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
       ];
-      return candidates.find((path) => existsSync11(path)) ?? "adb";
+      return candidates.find((path) => existsSync12(path)) ?? "adb";
     };
     lanIp = () => {
       for (const infos of Object.values(networkInterfaces())) {
@@ -2678,7 +3839,7 @@ var init_dev = __esm({
         "-d",
         resolved.deviceId,
         "--dart-define-from-file",
-        join12(project.root, envFile),
+        join13(project.root, envFile),
         "--dart-define",
         `AQUTTER_DEV_URL=${devUrl}`
       ];
@@ -2693,727 +3854,16 @@ var init_dev = __esm({
   }
 });
 
-// node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs
-import { createRequire } from "module";
-function deflateSync(data, opts) {
-  return dopt(data, opts || {}, 0, 0);
-}
-function strToU8(str, latin1) {
-  if (latin1) {
-    var ar_1 = new u8(str.length);
-    for (var i = 0; i < str.length; ++i)
-      ar_1[i] = str.charCodeAt(i);
-    return ar_1;
-  }
-  if (te)
-    return te.encode(str);
-  var l = str.length;
-  var ar = new u8(str.length + (str.length >> 1));
-  var ai = 0;
-  var w = function(v) {
-    ar[ai++] = v;
-  };
-  for (var i = 0; i < l; ++i) {
-    if (ai + 5 > ar.length) {
-      var n = new u8(ai + 8 + (l - i << 1));
-      n.set(ar);
-      ar = n;
-    }
-    var c = str.charCodeAt(i);
-    if (c < 128 || latin1)
-      w(c);
-    else if (c < 2048)
-      w(192 | c >> 6), w(128 | c & 63);
-    else if (c > 55295 && c < 57344)
-      c = 65536 + (c & 1023 << 10) | str.charCodeAt(++i) & 1023, w(240 | c >> 18), w(128 | c >> 12 & 63), w(128 | c >> 6 & 63), w(128 | c & 63);
-    else
-      w(224 | c >> 12), w(128 | c >> 6 & 63), w(128 | c & 63);
-  }
-  return slc(ar, 0, ai);
-}
-function zipSync(data, opts) {
-  if (!opts)
-    opts = {};
-  var r = {};
-  var files = [];
-  fltn(data, "", r, opts);
-  var o = 0;
-  var tot = 0;
-  for (var fn in r) {
-    var _a2 = r[fn], file = _a2[0], p = _a2[1];
-    var compression = p.level == 0 ? 0 : 8;
-    var f = strToU8(fn), s = f.length;
-    var com = p.comment, m = com && strToU8(com), ms = m && m.length;
-    var exl = exfl(p.extra);
-    if (s > 65535)
-      err(11);
-    var d = compression ? deflateSync(file, p) : file, l = d.length;
-    var c = crc();
-    c.p(file);
-    files.push(mrg(p, {
-      size: file.length,
-      crc: c.d(),
-      c: d,
-      f,
-      m,
-      u: s != fn.length || m && com.length != ms,
-      o,
-      compression
-    }));
-    o += 30 + s + exl + l;
-    tot += 76 + 2 * (s + exl) + (ms || 0) + l;
-  }
-  var out = new u8(tot + 22), oe = o, cdl = tot - o;
-  for (var i = 0; i < files.length; ++i) {
-    var f = files[i];
-    wzh(out, f.o, f, f.f, f.u, f.c.length);
-    var badd = 30 + f.f.length + exfl(f.extra);
-    out.set(f.c, f.o + badd);
-    wzh(out, o, f, f.f, f.u, f.c.length, f.o, f.m), o += 16 + badd + (f.m ? f.m.length : 0);
-  }
-  wzf(out, o, files.length, cdl, oe);
-  return out;
-}
-var require2, _a, Worker, isMarkedAsUntransferable, u8, u16, i32, fleb, fdeb, clim, freb, _a, fl, revfl, _b, fd, revfd, rev, x, i, hMap, flt, i, i, i, i, fdt, i, flm, fdm, shft, slc, ec, err, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, deo, et, dflt, crct, crc, dopt, mrg, wbytes, fltn, te, td, tds, exfl, wzh, wzf;
-var init_esm = __esm({
-  "node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs"() {
-    require2 = createRequire("/");
-    try {
-      _a = require2("worker_threads"), Worker = _a.Worker, isMarkedAsUntransferable = _a.isMarkedAsUntransferable;
-    } catch (e) {
-    }
-    u8 = Uint8Array;
-    u16 = Uint16Array;
-    i32 = Int32Array;
-    fleb = new u8([
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-      1,
-      1,
-      1,
-      2,
-      2,
-      2,
-      2,
-      3,
-      3,
-      3,
-      3,
-      4,
-      4,
-      4,
-      4,
-      5,
-      5,
-      5,
-      5,
-      0,
-      /* unused */
-      0,
-      0,
-      /* impossible */
-      0
-    ]);
-    fdeb = new u8([
-      0,
-      0,
-      0,
-      0,
-      1,
-      1,
-      2,
-      2,
-      3,
-      3,
-      4,
-      4,
-      5,
-      5,
-      6,
-      6,
-      7,
-      7,
-      8,
-      8,
-      9,
-      9,
-      10,
-      10,
-      11,
-      11,
-      12,
-      12,
-      13,
-      13,
-      /* unused */
-      0,
-      0
-    ]);
-    clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
-    freb = function(eb, start) {
-      var b = new u16(31);
-      for (var i = 0; i < 31; ++i) {
-        b[i] = start += 1 << eb[i - 1];
-      }
-      var r = new i32(b[30]);
-      for (var i = 1; i < 30; ++i) {
-        for (var j = b[i]; j < b[i + 1]; ++j) {
-          r[j] = j - b[i] << 5 | i;
-        }
-      }
-      return { b, r };
-    };
-    _a = freb(fleb, 2);
-    fl = _a.b;
-    revfl = _a.r;
-    fl[28] = 258, revfl[258] = 28;
-    _b = freb(fdeb, 0);
-    fd = _b.b;
-    revfd = _b.r;
-    rev = new u16(32768);
-    for (i = 0; i < 32768; ++i) {
-      x = (i & 43690) >> 1 | (i & 21845) << 1;
-      x = (x & 52428) >> 2 | (x & 13107) << 2;
-      x = (x & 61680) >> 4 | (x & 3855) << 4;
-      rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
-    }
-    hMap = (function(cd, mb, r) {
-      var s = cd.length;
-      var i = 0;
-      var l = new u16(mb);
-      for (; i < s; ++i) {
-        if (cd[i])
-          ++l[cd[i] - 1];
-      }
-      var le = new u16(mb);
-      for (i = 1; i < mb; ++i) {
-        le[i] = le[i - 1] + l[i - 1] << 1;
-      }
-      var co;
-      if (r) {
-        co = new u16(1 << mb);
-        var rvb = 15 - mb;
-        for (i = 0; i < s; ++i) {
-          if (cd[i]) {
-            var sv = i << 4 | cd[i];
-            var r_1 = mb - cd[i];
-            var v = le[cd[i] - 1]++ << r_1;
-            for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
-              co[rev[v] >> rvb] = sv;
-            }
-          }
-        }
-      } else {
-        co = new u16(s);
-        for (i = 0; i < s; ++i) {
-          if (cd[i]) {
-            co[i] = rev[le[cd[i] - 1]++] >> 15 - cd[i];
-          }
-        }
-      }
-      return co;
-    });
-    flt = new u8(288);
-    for (i = 0; i < 144; ++i)
-      flt[i] = 8;
-    for (i = 144; i < 256; ++i)
-      flt[i] = 9;
-    for (i = 256; i < 280; ++i)
-      flt[i] = 7;
-    for (i = 280; i < 288; ++i)
-      flt[i] = 8;
-    fdt = new u8(32);
-    for (i = 0; i < 32; ++i)
-      fdt[i] = 5;
-    flm = /* @__PURE__ */ hMap(flt, 9, 0);
-    fdm = /* @__PURE__ */ hMap(fdt, 5, 0);
-    shft = function(p) {
-      return (p + 7) / 8 | 0;
-    };
-    slc = function(v, s, e) {
-      if (s == null || s < 0)
-        s = 0;
-      if (e == null || e > v.length)
-        e = v.length;
-      return new u8(v.subarray(s, e));
-    };
-    ec = [
-      "unexpected EOF",
-      "invalid block type",
-      "invalid length/literal",
-      "invalid distance",
-      "stream finished",
-      "no stream handler",
-      ,
-      // determined by compression function
-      "no callback",
-      "invalid UTF-8 data",
-      "extra field too long",
-      "date not in range 1980-2099",
-      "filename too long",
-      "stream finishing",
-      "invalid zip data"
-      // determined by unknown compression method
-    ];
-    err = function(ind, msg, nt) {
-      var e = new Error(msg || ec[ind]);
-      e.code = ind;
-      if (Error.captureStackTrace)
-        Error.captureStackTrace(e, err);
-      if (!nt)
-        throw e;
-      return e;
-    };
-    wbits = function(d, p, v) {
-      v <<= p & 7;
-      var o = p / 8 | 0;
-      d[o] |= v;
-      d[o + 1] |= v >> 8;
-    };
-    wbits16 = function(d, p, v) {
-      v <<= p & 7;
-      var o = p / 8 | 0;
-      d[o] |= v;
-      d[o + 1] |= v >> 8;
-      d[o + 2] |= v >> 16;
-    };
-    hTree = function(d, mb) {
-      var t = [];
-      for (var i = 0; i < d.length; ++i) {
-        if (d[i])
-          t.push({ s: i, f: d[i] });
-      }
-      var s = t.length;
-      var t2 = t.slice();
-      if (!s)
-        return { t: et, l: 0 };
-      if (s == 1) {
-        var v = new u8(t[0].s + 1);
-        v[t[0].s] = 1;
-        return { t: v, l: 1 };
-      }
-      t.sort(function(a, b) {
-        return a.f - b.f;
-      });
-      t.push({ s: -1, f: 25001 });
-      var l = t[0], r = t[1], i0 = 0, i1 = 1, i2 = 2;
-      t[0] = { s: -1, f: l.f + r.f, l, r };
-      while (i1 != s - 1) {
-        l = t[t[i0].f < t[i2].f ? i0++ : i2++];
-        r = t[i0 != i1 && t[i0].f < t[i2].f ? i0++ : i2++];
-        t[i1++] = { s: -1, f: l.f + r.f, l, r };
-      }
-      var maxSym = t2[0].s;
-      for (var i = 1; i < s; ++i) {
-        if (t2[i].s > maxSym)
-          maxSym = t2[i].s;
-      }
-      var tr = new u16(maxSym + 1);
-      var mbt = ln(t[i1 - 1], tr, 0);
-      if (mbt > mb) {
-        var i = 0, dt = 0;
-        var lft = mbt - mb, cst = 1 << lft;
-        t2.sort(function(a, b) {
-          return tr[b.s] - tr[a.s] || a.f - b.f;
-        });
-        for (; i < s; ++i) {
-          var i2_1 = t2[i].s;
-          if (tr[i2_1] > mb) {
-            dt += cst - (1 << mbt - tr[i2_1]);
-            tr[i2_1] = mb;
-          } else
-            break;
-        }
-        dt >>= lft;
-        while (dt > 0) {
-          var i2_2 = t2[i].s;
-          if (tr[i2_2] < mb)
-            dt -= 1 << mb - tr[i2_2]++ - 1;
-          else
-            ++i;
-        }
-        for (; i >= 0 && dt; --i) {
-          var i2_3 = t2[i].s;
-          if (tr[i2_3] == mb) {
-            --tr[i2_3];
-            ++dt;
-          }
-        }
-        mbt = mb;
-      }
-      return { t: new u8(tr), l: mbt };
-    };
-    ln = function(n, l, d) {
-      return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
-    };
-    lc = function(c) {
-      var s = c.length;
-      while (s && !c[--s])
-        ;
-      var cl = new u16(++s);
-      var cli = 0, cln = c[0], cls = 1;
-      var w = function(v) {
-        cl[cli++] = v;
-      };
-      for (var i = 1; i <= s; ++i) {
-        if (c[i] == cln && i != s)
-          ++cls;
-        else {
-          if (!cln && cls > 2) {
-            for (; cls > 138; cls -= 138)
-              w(32754);
-            if (cls > 2) {
-              w(cls > 10 ? cls - 11 << 5 | 28690 : cls - 3 << 5 | 12305);
-              cls = 0;
-            }
-          } else if (cls > 3) {
-            w(cln), --cls;
-            for (; cls > 6; cls -= 6)
-              w(8304);
-            if (cls > 2)
-              w(cls - 3 << 5 | 8208), cls = 0;
-          }
-          while (cls--)
-            w(cln);
-          cls = 1;
-          cln = c[i];
-        }
-      }
-      return { c: cl.subarray(0, cli), n: s };
-    };
-    clen = function(cf, cl) {
-      var l = 0;
-      for (var i = 0; i < cl.length; ++i)
-        l += cf[i] * cl[i];
-      return l;
-    };
-    wfblk = function(out, pos, dat) {
-      var s = dat.length;
-      var o = shft(pos + 2);
-      out[o] = s & 255;
-      out[o + 1] = s >> 8;
-      out[o + 2] = out[o] ^ 255;
-      out[o + 3] = out[o + 1] ^ 255;
-      for (var i = 0; i < s; ++i)
-        out[o + i + 4] = dat[i];
-      return (o + 4 + s) * 8;
-    };
-    wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
-      wbits(out, p++, final);
-      ++lf[256];
-      var _a2 = hTree(lf, 15), dlt = _a2.t, mlb = _a2.l;
-      var _b2 = hTree(df, 15), ddt = _b2.t, mdb = _b2.l;
-      var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
-      var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
-      var lcfreq = new u16(19);
-      for (var i = 0; i < lclt.length; ++i)
-        ++lcfreq[lclt[i] & 31];
-      for (var i = 0; i < lcdt.length; ++i)
-        ++lcfreq[lcdt[i] & 31];
-      var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
-      var nlcc = 19;
-      for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
-        ;
-      var flen = bl + 5 << 3;
-      var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
-      var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
-      if (bs >= 0 && flen <= ftlen && flen <= dtlen)
-        return wfblk(out, p, dat.subarray(bs, bs + bl));
-      var lm, ll, dm, dl;
-      wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
-      if (dtlen < ftlen) {
-        lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
-        var llm = hMap(lct, mlcb, 0);
-        wbits(out, p, nlc - 257);
-        wbits(out, p + 5, ndc - 1);
-        wbits(out, p + 10, nlcc - 4);
-        p += 14;
-        for (var i = 0; i < nlcc; ++i)
-          wbits(out, p + 3 * i, lct[clim[i]]);
-        p += 3 * nlcc;
-        var lcts = [lclt, lcdt];
-        for (var it = 0; it < 2; ++it) {
-          var clct = lcts[it];
-          for (var i = 0; i < clct.length; ++i) {
-            var len = clct[i] & 31;
-            wbits(out, p, llm[len]), p += lct[len];
-            if (len > 15)
-              wbits(out, p, clct[i] >> 5 & 127), p += clct[i] >> 12;
-          }
-        }
-      } else {
-        lm = flm, ll = flt, dm = fdm, dl = fdt;
-      }
-      for (var i = 0; i < li; ++i) {
-        var sym = syms[i];
-        if (sym > 255) {
-          var len = sym >> 18 & 31;
-          wbits16(out, p, lm[len + 257]), p += ll[len + 257];
-          if (len > 7)
-            wbits(out, p, sym >> 23 & 31), p += fleb[len];
-          var dst = sym & 31;
-          wbits16(out, p, dm[dst]), p += dl[dst];
-          if (dst > 3)
-            wbits16(out, p, sym >> 5 & 8191), p += fdeb[dst];
-        } else {
-          wbits16(out, p, lm[sym]), p += ll[sym];
-        }
-      }
-      wbits16(out, p, lm[256]);
-      return p + ll[256];
-    };
-    deo = /* @__PURE__ */ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
-    et = /* @__PURE__ */ new u8(0);
-    dflt = function(dat, lvl, plvl, pre, post, st) {
-      var s = st.z || dat.length;
-      var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7e3)) + post);
-      var w = o.subarray(pre, o.length - post);
-      var lst = st.l;
-      var pos = (st.r || 0) & 7;
-      if (lvl) {
-        if (pos)
-          w[0] = st.r >> 3;
-        var opt = deo[lvl - 1];
-        var n = opt >> 13, c = opt & 8191;
-        var msk_1 = (1 << plvl) - 1;
-        var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
-        var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
-        var hsh = function(i2) {
-          return (dat[i2] ^ dat[i2 + 1] << bs1_1 ^ dat[i2 + 2] << bs2_1) & msk_1;
-        };
-        var syms = new i32(25e3);
-        var lf = new u16(288), df = new u16(32);
-        var lc_1 = 0, eb = 0, i = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
-        for (; i + 2 < s; ++i) {
-          var hv = hsh(i);
-          var imod = i & 32767, pimod = head[hv];
-          prev[imod] = pimod;
-          head[hv] = imod;
-          if (wi <= i) {
-            var rem = s - i;
-            if ((lc_1 > 7e3 || li > 24576) && (rem > 423 || !lst)) {
-              pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i - bs, pos);
-              li = lc_1 = eb = 0, bs = i;
-              for (var j = 0; j < 286; ++j)
-                lf[j] = 0;
-              for (var j = 0; j < 30; ++j)
-                df[j] = 0;
-            }
-            var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
-            if (rem > 2 && hv == hsh(i - dif)) {
-              var maxn = Math.min(n, rem) - 1;
-              var maxd = Math.min(32767, i);
-              var ml = Math.min(258, rem);
-              while (dif <= maxd && --ch_1 && imod != pimod) {
-                if (dat[i + l] == dat[i + l - dif]) {
-                  var nl = 0;
-                  for (; nl < ml && dat[i + nl] == dat[i + nl - dif]; ++nl)
-                    ;
-                  if (nl > l) {
-                    l = nl, d = dif;
-                    if (nl > maxn)
-                      break;
-                    var mmd = Math.min(dif, nl - 2);
-                    var md = 0;
-                    for (var j = 0; j < mmd; ++j) {
-                      var ti = i - dif + j & 32767;
-                      var pti = prev[ti];
-                      var cd = ti - pti & 32767;
-                      if (cd > md)
-                        md = cd, pimod = ti;
-                    }
-                  }
-                }
-                imod = pimod, pimod = prev[imod];
-                dif += imod - pimod & 32767;
-              }
-            }
-            if (d) {
-              syms[li++] = 268435456 | revfl[l] << 18 | revfd[d];
-              var lin = revfl[l] & 31, din = revfd[d] & 31;
-              eb += fleb[lin] + fdeb[din];
-              ++lf[257 + lin];
-              ++df[din];
-              wi = i + l;
-              ++lc_1;
-            } else {
-              syms[li++] = dat[i];
-              ++lf[dat[i]];
-            }
-          }
-        }
-        for (i = Math.max(i, wi); i < s; ++i) {
-          syms[li++] = dat[i];
-          ++lf[dat[i]];
-        }
-        pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i - bs, pos);
-        if (!lst) {
-          st.r = pos & 7 | w[pos / 8 | 0] << 3;
-          pos -= 7;
-          st.h = head, st.p = prev, st.i = i, st.w = wi;
-        }
-      } else {
-        for (var i = st.w || 0; i < s + lst; i += 65535) {
-          var e = i + 65535;
-          if (e >= s) {
-            w[pos / 8 | 0] = lst;
-            e = s;
-          }
-          pos = wfblk(w, pos + 1, dat.subarray(i, e));
-        }
-        st.i = s;
-      }
-      return slc(o, 0, pre + shft(pos) + post);
-    };
-    crct = /* @__PURE__ */ (function() {
-      var t = new Int32Array(256);
-      for (var i = 0; i < 256; ++i) {
-        var c = i, k = 9;
-        while (--k)
-          c = (c & 1 && -306674912) ^ c >>> 1;
-        t[i] = c;
-      }
-      return t;
-    })();
-    crc = function() {
-      var c = -1;
-      return {
-        p: function(d) {
-          var cr = c;
-          for (var i = 0; i < d.length; ++i)
-            cr = crct[cr & 255 ^ d[i]] ^ cr >>> 8;
-          c = cr;
-        },
-        d: function() {
-          return ~c;
-        }
-      };
-    };
-    dopt = function(dat, opt, pre, post, st) {
-      if (!st) {
-        st = { l: 1 };
-        if (opt.dictionary) {
-          var dict = opt.dictionary.subarray(-32768);
-          var newDat = new u8(dict.length + dat.length);
-          newDat.set(dict);
-          newDat.set(dat, dict.length);
-          dat = newDat;
-          st.w = dict.length;
-        }
-      }
-      return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
-    };
-    mrg = function(a, b) {
-      var o = {};
-      for (var k in a)
-        o[k] = a[k];
-      for (var k in b)
-        o[k] = b[k];
-      return o;
-    };
-    wbytes = function(d, b, v) {
-      for (; v; ++b)
-        d[b] = v, v >>>= 8;
-    };
-    fltn = function(d, p, t, o) {
-      for (var k in d) {
-        var val = d[k], n = p + k, op = o;
-        if (Array.isArray(val))
-          op = mrg(o, val[1]), val = val[0];
-        if (ArrayBuffer.isView(val))
-          t[n] = [val, op];
-        else {
-          t[n += "/"] = [new u8(0), op];
-          fltn(val, n, t, o);
-        }
-      }
-    };
-    te = typeof TextEncoder != "undefined" && /* @__PURE__ */ new TextEncoder();
-    td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
-    tds = 0;
-    try {
-      td.decode(et, { stream: true });
-      tds = 1;
-    } catch (e) {
-    }
-    exfl = function(ex) {
-      var le = 0;
-      if (ex) {
-        for (var k in ex) {
-          var l = ex[k].length;
-          if (l > 65535)
-            err(9);
-          le += l + 4;
-        }
-      }
-      return le;
-    };
-    wzh = function(d, b, f, fn, u, c, ce, co) {
-      var fl2 = fn.length, ex = f.extra, col = co && co.length;
-      var exl = exfl(ex);
-      wbytes(d, b, ce != null ? 33639248 : 67324752), b += 4;
-      if (ce != null)
-        d[b++] = 20, d[b++] = f.os;
-      d[b] = 20, b += 2;
-      d[b++] = f.flag << 1 | (c < 0 && 8), d[b++] = u && 8;
-      d[b++] = f.compression & 255, d[b++] = f.compression >> 8;
-      var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
-      if (y < 0 || y > 119)
-        err(10);
-      wbytes(d, b, y << 25 | dt.getMonth() + 1 << 21 | dt.getDate() << 16 | dt.getHours() << 11 | dt.getMinutes() << 5 | dt.getSeconds() >> 1), b += 4;
-      if (c != -1) {
-        wbytes(d, b, f.crc);
-        wbytes(d, b + 4, c < 0 ? -c - 2 : c);
-        wbytes(d, b + 8, f.size);
-      }
-      wbytes(d, b + 12, fl2);
-      wbytes(d, b + 14, exl), b += 16;
-      if (ce != null) {
-        wbytes(d, b, col);
-        wbytes(d, b + 6, f.attrs);
-        wbytes(d, b + 10, ce), b += 14;
-      }
-      d.set(fn, b);
-      b += fl2;
-      if (exl) {
-        for (var k in ex) {
-          var exf = ex[k], l = exf.length;
-          wbytes(d, b, +k);
-          wbytes(d, b + 2, l);
-          d.set(exf, b + 4), b += 4 + l;
-        }
-      }
-      if (col)
-        d.set(co, b), b += col;
-      return b;
-    };
-    wzf = function(o, b, c, d, e) {
-      wbytes(o, b, 101010256);
-      wbytes(o, b + 8, c);
-      wbytes(o, b + 10, c);
-      wbytes(o, b + 12, d);
-      wbytes(o, b + 16, e);
-    };
-  }
-});
-
 // src/syncSeed.ts
-import { readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "node:fs";
-import { join as join13, relative as relative4 } from "node:path";
-var VERSION_ENTRY, FONT_EXTENSIONS, assertNoFonts, buildVersion, packSeed;
+import { readFileSync as readFileSync12, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join14, relative as relative4 } from "node:path";
+var VERSION_ENTRY2, FONT_EXTENSIONS, assertNoFonts, buildVersion, packSeed;
 var init_syncSeed = __esm({
   "src/syncSeed.ts"() {
     "use strict";
     init_esm();
     init_shared();
-    VERSION_ENTRY = "version.json";
+    VERSION_ENTRY2 = "version.json";
     FONT_EXTENSIONS = [".woff2", ".woff", ".ttf", ".otf"];
     assertNoFonts = (entryNames) => {
       const fonts = entryNames.filter((name) => FONT_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext)));
@@ -3437,7 +3887,7 @@ var init_syncSeed = __esm({
       ].join("");
     };
     packSeed = (project, sourceRelative) => {
-      const sourceDir = join13(project.root, sourceRelative);
+      const sourceDir = join14(project.root, sourceRelative);
       const files = collectFiles(sourceDir);
       if (files.length === 0) {
         throw new Error(`[syncSeed] \u627E\u4E0D\u5230\u7522\u7269\uFF0C\u8ACB\u5148\u7522\u751F\u975C\u614B\u7DB2\u9801\uFF08${sourceDir} \u70BA\u7A7A\uFF09`);
@@ -3445,16 +3895,16 @@ var init_syncSeed = __esm({
       const zipEntries = {};
       for (const file of files) {
         const name = relative4(sourceDir, file).split("\\").join("/");
-        zipEntries[name] = new Uint8Array(readFileSync11(file));
+        zipEntries[name] = new Uint8Array(readFileSync12(file));
       }
       assertNoFonts(Object.keys(zipEntries));
       const version = buildVersion();
       const versionJson = `${JSON.stringify({ version }, null, 2)}
 `;
-      zipEntries[VERSION_ENTRY] = new TextEncoder().encode(versionJson);
+      zipEntries[VERSION_ENTRY2] = new TextEncoder().encode(versionJson);
       ensureSeedDir(project);
-      writeFileSync6(project.seedBundle, zipSync(zipEntries));
-      writeFileSync6(project.seedVersion, versionJson);
+      writeFileSync7(project.seedBundle, zipSync(zipEntries));
+      writeFileSync7(project.seedVersion, versionJson);
       console.log(`[syncSeed] \u5DF2\u6253\u5305 ${Object.keys(zipEntries).length} \u500B\u6A94\u6848\uFF08\u7248\u672C ${version}\uFF09\u2192 ${project.seedBundle}`);
       return version;
     };
@@ -3467,8 +3917,8 @@ __export(seed_exports, {
   runSeed: () => runSeed
 });
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync5, readFileSync as readFileSync12, rmSync } from "node:fs";
-import { join as join14, relative as relative5 } from "node:path";
+import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync6, readFileSync as readFileSync13, rmSync } from "node:fs";
+import { join as join15, relative as relative5 } from "node:path";
 var TAG5, WEB_ARTIFACT_NAME, fail4, runSeed;
 var init_seed = __esm({
   "src/commands/seed.ts"() {
@@ -3502,7 +3952,7 @@ var init_seed = __esm({
         console.log(`[${TAG5}] clean: ${web.cleanDirs.join(" / ")}\uFF08\u907F\u514D\u6CBF\u7528\u524D\u4E00\u4EFD env \u7684\u8A2D\u5B9A\u503C\uFF09`);
       }
       for (const dir of web.cleanDirs) {
-        rmSync(join14(project.root, dir), {
+        rmSync(join15(project.root, dir), {
           recursive: true,
           force: true
         });
@@ -3524,9 +3974,9 @@ var init_seed = __esm({
       }
       console.log(`[${TAG5}] pack seed`);
       packSeed(project, web.outputDir);
-      const { version } = JSON.parse(readFileSync12(project.seedVersion, "utf8"));
-      mkdirSync5(project.artifactsDir, { recursive: true });
-      const artifact = join14(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
+      const { version } = JSON.parse(readFileSync13(project.seedVersion, "utf8"));
+      mkdirSync6(project.artifactsDir, { recursive: true });
+      const artifact = join15(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
       copyFileSync2(project.seedBundle, artifact);
       console.log(`[${TAG5}] \u5B8C\u6210\uFF08env=${envFile}\uFF09\u2192 ${relative5(project.root, artifact)}`);
     };
@@ -3534,8 +3984,8 @@ var init_seed = __esm({
 });
 
 // src/signing.ts
-import { existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync13, readdirSync as readdirSync4, writeFileSync as writeFileSync7 } from "node:fs";
-import { join as join15 } from "node:path";
+import { existsSync as existsSync13, mkdirSync as mkdirSync7, readFileSync as readFileSync14, readdirSync as readdirSync4, writeFileSync as writeFileSync8 } from "node:fs";
+import { join as join16 } from "node:path";
 function signingSectionOf(config, signingPath, platformKey) {
   const section = config[platformKey];
   if (!section || typeof section !== "object") {
@@ -3568,21 +4018,21 @@ var init_signing = __esm({
     };
     DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com";
     iosPaths = (project) => {
-      const buildDir = join15(project.appDir, "build", "ios");
+      const buildDir = join16(project.appDir, "build", "ios");
       return {
         buildDir,
-        archive: join15(buildDir, "archive", "Runner.xcarchive"),
-        exportDir: join15(buildDir, "ipa"),
-        exportOptions: join15(buildDir, "ExportOptions.plist")
+        archive: join16(buildDir, "archive", "Runner.xcarchive"),
+        exportDir: join16(buildDir, "ipa"),
+        exportOptions: join16(buildDir, "ExportOptions.plist")
       };
     };
     readSigningConfig = (project, signingPath) => {
-      const file = join15(project.appDir, signingPath);
-      if (!existsSync12(file)) {
+      const file = join16(project.appDir, signingPath);
+      if (!existsSync13(file)) {
         return fail5(`\u627E\u4E0D\u5230\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\`\uFF08\`--signing=\` \u5403\u7684\u662F\u76F8\u5C0D ${project.config.appDir}/ \u7684\u8DEF\u5F91\uFF0C\u7BC4\u672C\u898B ${project.config.appDir}/signing/signing.example.json\uFF09\u3002`);
       }
       try {
-        return JSON.parse(readFileSync13(file, "utf8"));
+        return JSON.parse(readFileSync14(file, "utf8"));
       } catch (error) {
         return fail5(`\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${error.message}`);
       }
@@ -3627,7 +4077,7 @@ var init_signing = __esm({
       const configuration = flavor ? `Release-${flavor}` : "Release";
       step("xcodebuild archive", "xcodebuild", [
         "-workspace",
-        join15(project.appDir, "ios", "Runner.xcworkspace"),
+        join16(project.appDir, "ios", "Runner.xcworkspace"),
         "-scheme",
         scheme,
         "-configuration",
@@ -3642,10 +4092,10 @@ var init_signing = __esm({
       ], project.appDir);
       let exportOptions = paths.exportOptions;
       if (exportOptionsPath) {
-        exportOptions = join15(project.appDir, exportOptionsPath);
+        exportOptions = join16(project.appDir, exportOptionsPath);
       } else {
-        mkdirSync6(paths.buildDir, { recursive: true });
-        writeFileSync7(exportOptions, renderExportOptions(ios));
+        mkdirSync7(paths.buildDir, { recursive: true });
+        writeFileSync8(exportOptions, renderExportOptions(ios));
         console.log(`[${TAG6}] \u5DF2\u7531\u7C3D\u7AE0\u8A2D\u5B9A\u7522\u751F ${exportOptions}`);
       }
       step("xcodebuild -exportArchive", "xcodebuild", [
@@ -3666,7 +4116,7 @@ var init_signing = __esm({
         "runtime",
         "--timestamp",
         "--entitlements",
-        join15(project.appDir, "macos", "Runner", "Release.entitlements"),
+        join16(project.appDir, "macos", "Runner", "Release.entitlements"),
         "--sign",
         macos.identity,
         appPath
@@ -3690,7 +4140,7 @@ var init_signing = __esm({
         if (!password) {
           fail5("\u7C3D\u7AE0\u8A2D\u5B9A\u4F7F\u7528 pfx\uFF0C\u4F46 process env \u6C92\u6709 WIN_PFX_PASSWORD\u3002");
         }
-        certificateArgs.push("/f", join15(project.appDir, windows.pfx), "/p", password);
+        certificateArgs.push("/f", join16(project.appDir, windows.pfx), "/p", password);
       } else {
         certificateArgs.push("/sha1", windows.thumbprint);
       }
@@ -3705,7 +4155,7 @@ var init_signing = __esm({
           "/tr",
           windows.timestampUrl ?? DEFAULT_TIMESTAMP_URL,
           ...certificateArgs,
-          join15(releaseDir, name)
+          join16(releaseDir, name)
         ], project.appDir, secrets);
       }
     };
@@ -3724,8 +4174,8 @@ __export(build_exports, {
   locateProduct: () => locateProduct,
   runBuild: () => runBuild
 });
-import { copyFileSync as copyFileSync3, existsSync as existsSync13, mkdirSync as mkdirSync7, readFileSync as readFileSync14, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync8 } from "node:fs";
-import { basename as basename3, join as join16, relative as relative6 } from "node:path";
+import { copyFileSync as copyFileSync3, existsSync as existsSync14, mkdirSync as mkdirSync8, readFileSync as readFileSync15, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync9 } from "node:fs";
+import { basename as basename3, join as join17, relative as relative6 } from "node:path";
 var TAG7, FLUTTER_TARGET, fail6, BuildError, DESKTOP_ARCH, findSingle, locateProduct, artifactStem, ZIP_OS_UNIX, UNIX_MODE_SHIFT, UNIX_TYPE_FILE, UNIX_TYPE_SYMLINK, UNIX_PERMISSION_MASK, SYMLINK_PERMISSION, unixAttrs, zipEntryOf, zipDirectory, publishArtifact, step2, SIGNING_SECTION, HOST_PLATFORMS, PLATFORM_LABEL, buildOne, promptSelections, runBuild;
 var init_build = __esm({
   "src/commands/build.ts"() {
@@ -3758,68 +4208,68 @@ var init_build = __esm({
     };
     DESKTOP_ARCH = process.arch === "arm64" ? "arm64" : "x64";
     findSingle = (dir, extension) => {
-      if (!existsSync13(dir)) {
+      if (!existsSync14(dir)) {
         return null;
       }
       const matches = readdirSync5(dir).filter((entry) => entry.endsWith(extension));
-      return matches.length === 1 ? join16(dir, matches[0]) : null;
+      return matches.length === 1 ? join17(dir, matches[0]) : null;
     };
     locateProduct = (project, target, flavorName) => {
-      const buildDir = join16(project.appDir, "build");
+      const buildDir = join17(project.appDir, "build");
       switch (target) {
         case "apk": {
-          const file = join16(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
+          const file = join17(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
           return {
             kind: "file",
-            path: existsSync13(file) ? file : null,
+            path: existsSync14(file) ? file : null,
             expected: file
           };
         }
         case "aab": {
-          const file = flavorName ? join16(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join16(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
+          const file = flavorName ? join17(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join17(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
           return {
             kind: "file",
-            path: existsSync13(file) ? file : null,
+            path: existsSync14(file) ? file : null,
             expected: file
           };
         }
         case "ipa": {
-          const dir = join16(buildDir, "ios", "ipa");
+          const dir = join17(buildDir, "ios", "ipa");
           return {
             kind: "file",
             path: findSingle(dir, ".ipa"),
-            expected: join16(dir, "*.ipa")
+            expected: join17(dir, "*.ipa")
           };
         }
         case "ios": {
-          const dir = join16(buildDir, "ios", "iphoneos", "Runner.app");
+          const dir = join17(buildDir, "ios", "iphoneos", "Runner.app");
           return {
             kind: "dir",
-            path: existsSync13(dir) ? dir : null,
+            path: existsSync14(dir) ? dir : null,
             expected: dir
           };
         }
         case "macos": {
-          const dir = join16(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
+          const dir = join17(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
           return {
             kind: "dir",
             path: findSingle(dir, ".app"),
-            expected: join16(dir, "*.app")
+            expected: join17(dir, "*.app")
           };
         }
         case "windows": {
-          const dir = join16(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
+          const dir = join17(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
           return {
             kind: "dir",
-            path: existsSync13(dir) ? dir : null,
+            path: existsSync14(dir) ? dir : null,
             expected: dir
           };
         }
         case "linux": {
-          const dir = join16(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
+          const dir = join17(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
           return {
             kind: "dir",
-            path: existsSync13(dir) ? dir : null,
+            path: existsSync14(dir) ? dir : null,
             expected: dir
           };
         }
@@ -3845,7 +4295,7 @@ var init_build = __esm({
     };
     zipEntryOf = (entry) => {
       if (IS_WIN) {
-        return new Uint8Array(readFileSync14(entry.path));
+        return new Uint8Array(readFileSync15(entry.path));
       }
       if (entry.kind === ENTRY_KIND.symlink) {
         return [
@@ -3858,7 +4308,7 @@ var init_build = __esm({
         ];
       }
       return [
-        new Uint8Array(readFileSync14(entry.path)),
+        new Uint8Array(readFileSync15(entry.path)),
         {
           os: ZIP_OS_UNIX,
           attrs: unixAttrs(UNIX_TYPE_FILE | entry.mode & UNIX_PERMISSION_MASK)
@@ -3872,21 +4322,21 @@ var init_build = __esm({
         const name = `${rootName}/${relative6(dir, entry.path).split("\\").join("/")}`;
         entries[name] = zipEntryOf(entry);
       }
-      writeFileSync8(destination, zipSync(entries));
+      writeFileSync9(destination, zipSync(entries));
     };
     publishArtifact = (project, target, envName, flavorName, version) => {
       const product = locateProduct(project, target, flavorName);
       if (!product.path) {
         throw new BuildError(`\u6253\u5305\u5B8C\u6210\u4F46\u627E\u4E0D\u5230\u7522\u7269\uFF1A${product.expected}`);
       }
-      mkdirSync7(project.artifactsDir, { recursive: true });
+      mkdirSync8(project.artifactsDir, { recursive: true });
       const stem = artifactStem(project.config.artifactName, envName, flavorName, version);
       if (product.kind === "file") {
-        const destination2 = join16(project.artifactsDir, `${stem}.${target}`);
+        const destination2 = join17(project.artifactsDir, `${stem}.${target}`);
         copyFileSync3(product.path, destination2);
         return destination2;
       }
-      const destination = join16(project.artifactsDir, `${stem}_${target}.zip`);
+      const destination = join17(project.artifactsDir, `${stem}_${target}.zip`);
       zipDirectory(product.path, destination);
       return destination;
     };
@@ -3930,14 +4380,14 @@ var init_build = __esm({
       }
       const signedIpa = signing !== null && platform === "ipa";
       const buildTarget = signedIpa ? "ios" : FLUTTER_TARGET[platform];
-      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join16(project.root, envFile)}`];
+      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join17(project.root, envFile)}`];
       if (flavor) {
         buildArgs.push("--flavor", flavor);
       }
       if (signedIpa) {
         buildArgs.push("--no-codesign");
       } else if (exportOptions) {
-        buildArgs.push(`--export-options-plist=${join16(project.appDir, exportOptions)}`);
+        buildArgs.push(`--export-options-plist=${join17(project.appDir, exportOptions)}`);
       }
       step2(`flutter build ${buildTarget}`, "flutter", buildArgs, project.appDir);
       if (signedIpa) {
@@ -4167,8 +4617,8 @@ __export(upgrade_exports, {
   runUpgrade: () => runUpgrade
 });
 import { spawnSync as spawnSync6 } from "node:child_process";
-import { existsSync as existsSync14, readFileSync as readFileSync15, writeFileSync as writeFileSync9 } from "node:fs";
-import { join as join17 } from "node:path";
+import { existsSync as existsSync15, readFileSync as readFileSync16, writeFileSync as writeFileSync10 } from "node:fs";
+import { join as join18 } from "node:path";
 var TAG8, fail7, planUpgrade, runUpgrade;
 var init_upgrade = __esm({
   "src/commands/upgrade.ts"() {
@@ -4210,25 +4660,25 @@ var init_upgrade = __esm({
         projectConfig: project.config,
         requested: flags.to
       });
-      const pubspecFile = join17(project.appDir, "pubspec.yaml");
-      const fvmrcFile = join17(project.appDir, ".fvmrc");
-      const packageFile = join17(project.root, "package.json");
-      if (!existsSync14(pubspecFile)) {
+      const pubspecFile = join18(project.appDir, "pubspec.yaml");
+      const fvmrcFile = join18(project.appDir, ".fvmrc");
+      const packageFile = join18(project.root, "package.json");
+      if (!existsSync15(pubspecFile)) {
         return fail7(`\u627E\u4E0D\u5230 ${pubspecFile}\u3002\u8ACB\u78BA\u8A8D aqutter.config.json \u7684 appDir\u3002`);
       }
-      const originalPubspec = readFileSync15(pubspecFile, "utf8");
-      const originalPackage = existsSync14(packageFile) ? readFileSync15(packageFile, "utf8") : null;
+      const originalPubspec = readFileSync16(pubspecFile, "utf8");
+      const originalPackage = existsSync15(packageFile) ? readFileSync16(packageFile, "utf8") : null;
       const plan = planUpgrade(
         {
           pubspec: originalPubspec,
-          fvmrc: existsSync14(fvmrcFile) ? readFileSync15(fvmrcFile, "utf8") : null,
+          fvmrc: existsSync15(fvmrcFile) ? readFileSync16(fvmrcFile, "utf8") : null,
           packageJson: originalPackage,
           keepShellRef: project.config.shell.path !== void 0
         },
         expected
       );
       console.log(`[${TAG8}] \u5C0D\u9F4A\u5230\u6846\u67B6\u7248\u672C ${expected.version}\uFF08Flutter ${expected.flutterVersion}\u3001\u6BBC ${expected.shellRef.slice(0, 7)}\uFF1Bmanifest \u4F86\u6E90\uFF1A${source}\uFF09${dryRun ? "\uFF08dry-run\uFF0C\u4E0D\u5BEB\u6A94\uFF09" : ""}`);
-      const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync14(fvmrcFile) ? readFileSync15(fvmrcFile, "utf8") : null }, expected);
+      const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync15(fvmrcFile) ? readFileSync16(fvmrcFile, "utf8") : null }, expected);
       if (downgrades.length > 0) {
         const lines = downgrades.map((item) => `  ${item.what}\uFF1A${item.from} \u2192 ${item.to}`);
         if (!allowDowngrade) {
@@ -4253,21 +4703,21 @@ var init_upgrade = __esm({
       };
       report("pubspec.yaml", plan.pubspec.changes);
       if (plan.pubspec.changes.length > 0 && !dryRun) {
-        writeFileSync9(pubspecFile, plan.pubspec.text);
+        writeFileSync10(pubspecFile, plan.pubspec.text);
       }
       if (plan.fvmrc === "invalid") {
         console.warn(`  .fvmrc  \u4E0D\u662F\u5408\u6CD5 JSON\uFF0C\u5DF2\u7565\u904E\uFF08\u8ACB\u624B\u52D5\u4FEE\u6B63\uFF1A{ "flutter": "${expected.flutterVersion}" }\uFF0C\u6216\u522A\u9664\u8A72\u6A94\uFF09`);
       } else if (plan.fvmrc !== null && plan.fvmrc.changed) {
         report(".fvmrc", [`flutter \u2192 ${expected.flutterVersion}`]);
         if (!dryRun) {
-          writeFileSync9(fvmrcFile, plan.fvmrc.text);
+          writeFileSync10(fvmrcFile, plan.fvmrc.text);
         }
       }
       const npmChanged = plan.packageJson !== null && plan.packageJson.changes.length > 0;
       if (plan.packageJson !== null) {
         report("package.json", plan.packageJson.changes);
         if (npmChanged && !dryRun) {
-          writeFileSync9(packageFile, plan.packageJson.text);
+          writeFileSync10(packageFile, plan.packageJson.text);
         }
       }
       if (!changed) {
@@ -4304,9 +4754,9 @@ __export(env_exports, {
   removeEnvironment: () => removeEnvironment,
   runEnv: () => runEnv
 });
-import { copyFileSync as copyFileSync4, existsSync as existsSync15, mkdirSync as mkdirSync8, readFileSync as readFileSync16, writeFileSync as writeFileSync10 } from "node:fs";
-import { dirname as dirname3, join as join18 } from "node:path";
-var TAG9, readRawConfig, writeRawConfig, isEmptyObject, addEnvironment, removeEnvironment, describeWeb, listEnvironments, fail8, USAGE, runEnv;
+import { copyFileSync as copyFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync9, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
+import { dirname as dirname3, join as join19 } from "node:path";
+var TAG9, readRawConfig, writeRawConfig, isEmptyObject, addEnvironment, removeEnvironment, describeWeb, listEnvironments, fail8, USAGE2, runEnv;
 var init_env = __esm({
   "src/commands/env.ts"() {
     "use strict";
@@ -4316,10 +4766,10 @@ var init_env = __esm({
     init_shared();
     TAG9 = "env";
     readRawConfig = (project) => {
-      return JSON.parse(readFileSync16(join18(project.root, CONFIG_FILE), "utf8"));
+      return JSON.parse(readFileSync17(join19(project.root, CONFIG_FILE), "utf8"));
     };
     writeRawConfig = (project, raw) => {
-      writeFileSync10(join18(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
+      writeFileSync11(join19(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
 `);
     };
     isEmptyObject = (value) => Object.keys(value).length === 0;
@@ -4332,8 +4782,8 @@ var init_env = __esm({
         throw new ConfigError(`\u74B0\u5883\u300C${name}\u300D\u5DF2\u5B58\u5728\u65BC ${CONFIG_FILE}\u3002\u8981\u4FEE\u6539\u8ACB\u76F4\u63A5\u7DE8\u8F2F\u8A2D\u5B9A\u6A94\uFF1B\u4E0D\u6703\u8986\u5BEB\u3002`);
       }
       const envFile = options.envFile ?? defaultEnvFileOf(project, name);
-      const target = join18(project.root, envFile);
-      const createdEnvFile = !existsSync15(target);
+      const target = join19(project.root, envFile);
+      const createdEnvFile = !existsSync16(target);
       if (createdEnvFile) {
         let source;
         if (options.from !== void 0) {
@@ -4341,17 +4791,17 @@ var init_env = __esm({
           if (!resolved.ok) {
             throw new ConfigError(`--from \u89E3\u6790\u5931\u6557\uFF1A${resolved.error}`);
           }
-          source = join18(project.root, resolved.value.envFile);
+          source = join19(project.root, resolved.value.envFile);
         } else {
-          source = join18(project.root, project.config.envDir, ".env.example");
+          source = join19(project.root, project.config.envDir, ".env.example");
         }
-        mkdirSync8(dirname3(target), { recursive: true });
-        if (existsSync15(source)) {
+        mkdirSync9(dirname3(target), { recursive: true });
+        if (existsSync16(source)) {
           copyFileSync4(source, target);
         } else if (options.from !== void 0) {
           throw new ConfigError(`--from \u7684\u4F86\u6E90 \`${source}\` \u4E0D\u5B58\u5728\u3002`);
         } else {
-          writeFileSync10(target, `# ${name} \u74B0\u5883\u7684\u8A2D\u5B9A\u3002\u7531 aqutter env add \u5EFA\u7ACB\uFF1B\u9375\u7684\u8AAA\u660E\u898B docs/environment.md\u3002
+          writeFileSync11(target, `# ${name} \u74B0\u5883\u7684\u8A2D\u5B9A\u3002\u7531 aqutter env add \u5EFA\u7ACB\uFF1B\u9375\u7684\u8AAA\u660E\u898B docs/environment.md\u3002
 `);
         }
       }
@@ -4409,7 +4859,7 @@ var init_env = __esm({
       for (const [name, environment] of Object.entries(project.config.environments)) {
         const envFile = environment.envFile ?? defaultEnvFileOf(project, name);
         lines.push(
-          `${name}  env=${envFile}${existsSync15(join18(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
+          `${name}  env=${envFile}${existsSync16(join19(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
         );
       }
       return lines;
@@ -4418,7 +4868,7 @@ var init_env = __esm({
       console.error(`[${TAG9}] ${message}`);
       process.exit(1);
     };
-    USAGE = "\u7528\u6CD5\uFF1Aaqutter env add <\u540D\u7A31> [--flavor=<\u540D>] [--signing=<\u8DEF\u5F91>] [--from=<\u74B0\u5883\u540D\u6216 env \u6A94>] [--dev-command=<\u6307\u4EE4>] [--build-command=<\u6307\u4EE4>] | aqutter env list | aqutter env remove <\u540D\u7A31>";
+    USAGE2 = "\u7528\u6CD5\uFF1Aaqutter env add <\u540D\u7A31> [--flavor=<\u540D>] [--signing=<\u8DEF\u5F91>] [--from=<\u74B0\u5883\u540D\u6216 env \u6A94>] [--dev-command=<\u6307\u4EE4>] [--build-command=<\u6307\u4EE4>] | aqutter env list | aqutter env remove <\u540D\u7A31>";
     runEnv = async (project, argv) => {
       const { positional, flags } = parseArgs(argv);
       const [subcommand, name] = positional;
@@ -4426,7 +4876,7 @@ var init_env = __esm({
         switch (subcommand) {
           case "add": {
             if (!name) {
-              return fail8(USAGE);
+              return fail8(USAGE2);
             }
             const web = {};
             if (flags["dev-command"] !== void 0) {
@@ -4464,14 +4914,14 @@ var init_env = __esm({
           }
           case "remove": {
             if (!name) {
-              return fail8(USAGE);
+              return fail8(USAGE2);
             }
             const envFile = removeEnvironment(project, name);
             console.log(`[${TAG9}] \u5DF2\u5F9E ${CONFIG_FILE} \u79FB\u9664\u74B0\u5883\u300C${name}\u300D\uFF1Benv \u6A94 ${envFile}\u3001flavor \u8207\u7C3D\u7AE0\u6A94\u90FD\u4FDD\u7559\u3002`);
             return;
           }
           default:
-            return fail8(USAGE);
+            return fail8(USAGE2);
         }
       } catch (error) {
         if (error instanceof ConfigError) {
@@ -4507,8 +4957,8 @@ __export(flavorAdd_exports, {
   wireDisplayName: () => wireDisplayName
 });
 import { randomBytes } from "node:crypto";
-import { existsSync as existsSync16, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
-import { join as join19, relative as relative7 } from "node:path";
+import { existsSync as existsSync17, readFileSync as readFileSync18, writeFileSync as writeFileSync12 } from "node:fs";
+import { join as join20, relative as relative7 } from "node:path";
 var TAG10, FlavorAddError, fail9, FLAVOR_NAME_PATTERN, XCODE_MODES, GRADLE_DIMENSION, ANDROID_LABEL_RESOURCE, PBX_ID_BYTES, PBX_INDENT, BUILD_SETTING_INDENT, PLIST_INDENT, GRADLE_FILE_LABEL, kotlinEscape, pbxEscape, readAndroidApplicationId, readAndroidLabel, wireAndroidLabel, renderGradleFlavor, addGradleFlavor, newPbxId, PBX_BARE_NAME, pbxName, listBuildConfigurations, readBuildSetting, setBuildSetting, runnerConfigurationIds, readXcodeIdentity, readPlistDisplayName, wireDisplayName, addXcodeConfigurations, renderXcodeScheme, PLATFORMS, createPaths, askFlavorName, runFlavorAdd;
 var init_flavorAdd = __esm({
   "src/commands/flavorAdd.ts"() {
@@ -4799,12 +5249,12 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
     };
     PLATFORMS = ["android", "ios", "macos"];
     createPaths = (project) => ({
-      androidGradle: join19(project.appDir, "android", "app", "build.gradle.kts"),
-      androidManifest: join19(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
-      xcodeProject: (platform) => join19(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
-      xcodeSchemeDir: (platform) => join19(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
-      infoPlist: (platform) => join19(project.appDir, platform, "Runner", "Info.plist"),
-      appInfoXcconfig: (platform) => join19(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
+      androidGradle: join20(project.appDir, "android", "app", "build.gradle.kts"),
+      androidManifest: join20(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
+      xcodeProject: (platform) => join20(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
+      xcodeSchemeDir: (platform) => join20(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
+      infoPlist: (platform) => join20(project.appDir, platform, "Runner", "Info.plist"),
+      appInfoXcconfig: (platform) => join20(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
     });
     askFlavorName = async (initial, askWithDefault) => {
       let name = initial ?? "";
@@ -4824,36 +5274,36 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
       const appDirName = project.config.appDir;
       const rel = (path) => relative7(project.root, path);
       const readText = (path) => {
-        if (!existsSync16(path)) {
+        if (!existsSync17(path)) {
           throw new FlavorAddError(`\u627E\u4E0D\u5230 ${rel(path)}\u3002`);
         }
-        return readFileSync17(path, "utf8");
+        return readFileSync18(path, "utf8");
       };
       const readIdentity = (platform) => {
         const appInfo = paths.appInfoXcconfig(platform);
         return readXcodeIdentity(
           readText(paths.xcodeProject(platform)),
-          existsSync16(appInfo) ? readFileSync17(appInfo, "utf8") : null
+          existsSync17(appInfo) ? readFileSync18(appInfo, "utf8") : null
         );
       };
       const applyAndroid = (flavor) => {
         const gradleLabel = rel(paths.androidGradle);
         const wired = wireAndroidLabel(readText(paths.androidGradle), readText(paths.androidManifest), gradleLabel);
         const gradle = addGradleFlavor(wired.gradle, flavor, gradleLabel);
-        writeFileSync11(paths.androidGradle, gradle);
+        writeFileSync12(paths.androidGradle, gradle);
         if (wired.changed) {
-          writeFileSync11(paths.androidManifest, wired.manifest);
+          writeFileSync12(paths.androidManifest, wired.manifest);
         }
         return [gradleLabel, ...wired.changed ? [rel(paths.androidManifest)] : []];
       };
       const writeXcodeScheme = (platform, flavor) => {
         const dir = paths.xcodeSchemeDir(platform);
-        const template = join19(dir, "Runner.xcscheme");
-        const target = join19(dir, `${flavor.name}.xcscheme`);
-        if (existsSync16(target)) {
+        const template = join20(dir, "Runner.xcscheme");
+        const target = join20(dir, `${flavor.name}.xcscheme`);
+        if (existsSync17(target)) {
           throw new FlavorAddError(`\u5DF2\u6709 scheme ${rel(target)}\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
-        writeFileSync11(target, renderXcodeScheme(readText(template), flavor.name));
+        writeFileSync12(target, renderXcodeScheme(readText(template), flavor.name));
         return rel(target);
       };
       const applyXcode = (platform, flavor, fallbackDisplayName) => {
@@ -4863,14 +5313,14 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
         if (listBuildConfigurations(original).some((block) => block.name === `Release-${flavor.name}`)) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 configuration "Release-${flavor.name}"\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
-        if (existsSync16(join19(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
+        if (existsSync17(join20(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 scheme ${flavor.name}.xcscheme\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
         const wired = wireDisplayName(original, readText(plistPath), fallbackDisplayName);
         const pbxproj = addXcodeConfigurations(wired.pbxproj, flavor);
-        writeFileSync11(projectPath, pbxproj);
+        writeFileSync12(projectPath, pbxproj);
         if (wired.changed) {
-          writeFileSync11(plistPath, wired.plist);
+          writeFileSync12(plistPath, wired.plist);
         }
         const schemePath = writeXcodeScheme(platform, flavor);
         return [rel(projectPath), ...wired.changed ? [rel(plistPath)] : [], schemePath];
@@ -4885,9 +5335,9 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
       try {
         const { positional } = parseArgs(argv);
         const available = {
-          android: existsSync16(paths.androidGradle),
-          ios: existsSync16(paths.xcodeProject("ios")),
-          macos: existsSync16(paths.xcodeProject("macos"))
+          android: existsSync17(paths.androidGradle),
+          ios: existsSync17(paths.xcodeProject("ios")),
+          macos: existsSync17(paths.xcodeProject("macos"))
         };
         if (!available.android && !available.ios && !available.macos) {
           throw new FlavorAddError(`${appDirName}/ \u5167\u6C92\u6709 android/\u3001ios/ \u6216 macos/ \u539F\u751F\u5C08\u6848\uFF0C\u7121\u4E8B\u53EF\u505A\u3002`);
@@ -4969,8 +5419,8 @@ __export(genJks_exports, {
   runGenJks: () => runGenJks
 });
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync17, unlinkSync, writeFileSync as writeFileSync12 } from "node:fs";
-import { join as join20, relative as relative8 } from "node:path";
+import { existsSync as existsSync18, unlinkSync, writeFileSync as writeFileSync13 } from "node:fs";
+import { join as join21, relative as relative8 } from "node:path";
 var TAG11, fail10, STORE_FILE_PREFIX_FROM_APP_MODULE, JKS_EXTENSION, DEFAULT_JKS_NAME, DEFAULT_ALIAS, DEFAULT_VALIDITY_YEARS, DEFAULT_LOCALITY, DEFAULT_COUNTRY, DAYS_PER_YEAR, MIN_PASSWORD_LENGTH, PASSWORD_ENV_KEY, KEY_ALGORITHM, KEY_SIZE, STORE_TYPE, KEYTOOL_BIN, keytoolCandidates, locateKeytool, isValidPassword, parseValidityYears, normalizeJksName, escapeDnValue, buildDistinguishedName, buildKeyProperties, buildKeytoolArgs, runGenJks;
 var init_genJks = __esm({
   "src/commands/genJks.ts"() {
@@ -4998,7 +5448,7 @@ var init_genJks = __esm({
     keytoolCandidates = (javaHome, keytoolBin = KEYTOOL_BIN) => {
       const candidates = [keytoolBin];
       if (javaHome) {
-        candidates.push(join20(javaHome, "bin", keytoolBin));
+        candidates.push(join21(javaHome, "bin", keytoolBin));
       }
       return candidates;
     };
@@ -5062,8 +5512,8 @@ var init_genJks = __esm({
     ];
     runGenJks = async (project, argv) => {
       void argv;
-      const androidDir = join20(project.appDir, "android");
-      const keyPropertiesFile = join20(androidDir, "key.properties");
+      const androidDir = join21(project.appDir, "android");
+      const keyPropertiesFile = join21(androidDir, "key.properties");
       const gitignoreLabel = `${project.config.appDir}/android/.gitignore`;
       const {
         askWithDefault,
@@ -5113,7 +5563,7 @@ var init_genJks = __esm({
         });
       };
       const ensureCanWrite = async (filePath, label) => {
-        if (!existsSync17(filePath)) {
+        if (!existsSync18(filePath)) {
           return;
         }
         const overwrite = await askYesNo(`${label} \u5DF2\u5B58\u5728\uFF08${relative8(project.root, filePath)}\uFF09\uFF0C\u662F\u5426\u8986\u5BEB\uFF1F`);
@@ -5146,7 +5596,7 @@ var init_genJks = __esm({
       const password = await askPassword();
       const validityYears = await askValidityYears();
       const distinguishedName = await askDistinguishedName();
-      const jksPath = join20(androidDir, jksName);
+      const jksPath = join21(androidDir, jksName);
       await ensureCanWrite(jksPath, "keystore");
       await ensureCanWrite(keyPropertiesFile, "key.properties");
       console.log(`
@@ -5159,7 +5609,7 @@ var init_genJks = __esm({
         distinguishedName,
         password
       });
-      writeFileSync12(keyPropertiesFile, buildKeyProperties({ jksName, alias, password }), "utf8");
+      writeFileSync13(keyPropertiesFile, buildKeyProperties({ jksName, alias, password }), "utf8");
       console.log("\n\u5B8C\u6210\uFF1A");
       console.log(`  keystore       \u2192 ${relative8(project.root, jksPath)}`);
       console.log(`  key.properties \u2192 ${relative8(project.root, keyPropertiesFile)}`);
@@ -5181,7 +5631,8 @@ var HELP = `aqutter ${package_default.version}
   dev [target]         \u540C\u8DD1\u7DB2\u9801 dev server \u8207 flutter run\uFF08target: macos|windows|linux|ios|ios-device|android|<device id>\uFF09
   seed                 \u7522\u751F\u975C\u614B\u7DB2\u9801\u4E26\u6253\u5305\u7A2E\u5B50\u7DB2\u9801\u5305\uFF08\u540C\u6642\u4EA4\u4ED8 web_<env>_<\u7248\u672C>.zip\uFF09
   build <platform>     \u6253\u5305 App\uFF08apk|aab|ios|ipa|macos|windows|linux\uFF09\uFF0C\u542B\u7A2E\u5B50\u3001\u7C3D\u7AE0\u3001\u4EA4\u4ED8
-  env add|list|remove  \u7BA1\u7406\u8A2D\u5B9A\u6A94\u88E1\u7684\u547D\u540D\u74B0\u5883\uFF08env \u6A94\u3001flavor\u3001\u7C3D\u7AE0\u3001\u7DB2\u9801\u6307\u4EE4\u8986\u84CB\uFF09
+  bundle keygen|sign   \u7DB2\u9801\u5305\u7C3D\u7AE0\uFF1A\u7522\u751F\u7C3D\u7F72\u91D1\u9470\uFF1B\u5C0D seed \u7522\u51FA\u7684 web_<env>_<\u7248\u672C>.zip \u7C3D\u7AE0\uFF08\u8A2D\u4E86\u516C\u9470\u7684 App \u624D\u6703\u63A5\u53D7\u66F4\u65B0\uFF09
+  env add|list|remove\u7BA1\u7406\u8A2D\u5B9A\u6A94\u88E1\u7684\u547D\u540D\u74B0\u5883\uFF08env \u6A94\u3001flavor\u3001\u7C3D\u7AE0\u3001\u7DB2\u9801\u6307\u4EE4\u8986\u84CB\uFF09
   flavor add [<name>]  \u70BA Android / iOS / macOS \u65B0\u589E flavor
   android gen-jks      \u7522\u751F Android \u7C3D\u7AE0\u7528 keystore \u8207 key.properties
   plugin create <name> \u7522\u751F Aqutter plugin \u5C08\u6848
@@ -5207,6 +5658,11 @@ var main = async () => {
   if (command === "init") {
     const { runInit: runInit2 } = await Promise.resolve().then(() => (init_init(), init_exports));
     await runInit2(process.cwd(), rest);
+    return;
+  }
+  if (command === "bundle") {
+    const { runBundle: runBundle2 } = await Promise.resolve().then(() => (init_bundle(), bundle_exports));
+    runBundle2(process.cwd(), rest);
     return;
   }
   if (command === "plugin") {
