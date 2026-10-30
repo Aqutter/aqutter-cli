@@ -1,7 +1,7 @@
 <!-- REMINDER: Relative Paths Only! No file:///c:/... -->
 # aqutter-cli
 
-Aqutter 框架的命令列工具：npm 套件 `@aqutter/aqutter-cli`，指令為 `aqutter`。把既有的網頁專案接上 Aqutter 的 Flutter 殼，提供 `init`、`dev`、`seed`、`build`、`flavor add`、`android gen-jks`、`plugin …`、`doctor`、`upgrade`。
+Aqutter 框架的命令列工具：npm 套件 `@aqutter/aqutter-cli`，指令為 `aqutter`。把既有的網頁專案接上 Aqutter 的 Flutter 殼，提供 `init`、`dev`、`seed`、`build`、`bundle keygen|sign`、`flavor add`、`android gen-jks`、`plugin …`、`doctor`、`upgrade`。
 
 本 repo 是從 `Aqutter/aqutter` 的 `cli/` 拆出來的；拆分的來龍去脈與決策記在該 repo 的 `.kn-project/archive/2610211114-split-cli-to-aqutter-cli-repo.md`；契約（release manifest）的格式以該 repo 的 `manifest/schema.json` 與 `docs/releases.md` 為準。
 

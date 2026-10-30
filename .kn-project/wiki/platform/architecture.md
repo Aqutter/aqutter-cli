@@ -1,12 +1,12 @@
 # 架構總覽
 
 ## Summary
-aqutter-cli 是 Aqutter 框架的命令列工具，指令為 aqutter：把既有的網頁專案接上 Flutter 殼，並提供開發、打包、環境與 plugin 管理，以及檢查與升級專案版本的指令。它以單一打包檔發佈，專案範本內嵌其中；版本相容性的知識不寫在這裡，而是讀框架發佈的 release manifest。
+aqutter-cli 是 Aqutter 框架的命令列工具，指令為 aqutter：把既有的網頁專案接上 Flutter 殼，並提供開發、打包、網頁包簽章、環境與 plugin 管理，以及檢查與升級專案版本的指令。它以單一打包檔發佈，專案範本內嵌其中；版本相容性的知識不寫在這裡，而是讀框架發佈的 release manifest。
 
 ## 組成
 | 部分 | 角色 |
 |---|---|
-| 指令 | 初始化、開發、種子網頁包、打包、環境、flavor、keystore、plugin、doctor、upgrade |
+| 指令 | 初始化、開發、種子網頁包、打包、網頁包簽章、環境、flavor、keystore、plugin、doctor、upgrade |
 | 網頁框架轉接器 | 把 nuxt、vite、next 與自訂框架的差異收攏成一處，其餘指令只認設定檔 |
 | 版本清單層 | 取得並驗證 release manifest，決定框架版本與相容資訊 |
 | 版本檔解析 | 讀寫 pubspec、固定 Flutter 版本的檔案、package.json 與 lock |
