@@ -30,19 +30,21 @@
 - **跨 repo 檔案指涉**: `aqutter`：`docs/native-features.md`（說明這兩項設定的來源與手動套用步驟）。
 
 ## Contract / 介面契約
-- **契約正本 repo**: `aqutter`　**修訂號**: `rev 1`　**狀態**: `凍結（核准日 2026-10-30）`
+- **契約正本 repo**: `aqutter`　**修訂號**: `rev 3`　**狀態**: `凍結（rev 3，核准日 2026-10-30；rev 1、rev 2 同日凍結）`
 
 ### 1. Handler（網頁 → 殼；名稱兩端成對：殼的 `BridgeHandler` 與 `aqutter-js` 的 `BridgeHandler` enum）
 | # | 名稱 | 請求 | 回應 | 平台（列入 capabilities 的條件） |
 |---|---|---|---|---|
 | 1 | `clipboard_read` | 無 | `{ text: string \| null }`（剪貼簿沒有文字為 null） | 全部 |
 | 2 | `clipboard_write` | `{ text: string }` | `{ ok: true }` | 全部 |
-| 3 | `share_open` | `{ text?: string, url?: string, subject?: string }`，`text` 與 `url` 至少一個非空 | `{ status: 'shared' \| 'dismissed' \| 'unavailable' }` | 全部 |
+| 3 | `share_open` | `{ text?: string, url?: string, subject?: string, files?: ShareFile[] }`，`text`、`url`、`files` 至少一個有內容；`ShareFile` ＝ `{ name: string, mimeType?: string, data: Uint8Array }` | `{ status: 'shared' \| 'dismissed' \| 'unavailable' }` | 全部 |
 | 4 | `notify_show` | `{ id?: int, title: string, body?: string, payload?: string }` | `{ id: int }` | Android、iOS、macOS |
 | 5 | `notify_schedule` | 同 `notify_show`，另加必填 `atMs: int`（epoch 毫秒） | `{ id: int }` | Android、iOS、macOS |
 | 6 | `notify_cancel` | `{ id?: int }`（省略＝取消全部） | `{ ok: true }` | Android、iOS、macOS |
 | 7 | `notify_initial` | 無 | `{ id: int \| null, payload: string \| null }`（點通知而冷啟 App 時有值，否則兩者皆 null） | Android、iOS、macOS |
 | 8 | `deeplink_initial` | 無 | `{ url: string \| null }`（啟動 App 的連結；同一個程序內重複呼叫回傳相同值） | Android、iOS、macOS |
+| 9 | `clipboard_read_image` | 無 | `{ image: { mimeType: 'image/png', data: Uint8Array } \| null }`（剪貼簿沒有圖片為 null；一律以 PNG 回傳） | Android、iOS、macOS、Windows |
+| 10 | `clipboard_write_image` | `{ data: Uint8Array, mimeType?: string }`（PNG 或 JPEG，省略視為 `image/png`） | `{ ok: true }` | Android、iOS、macOS、Windows |
 
 ### 2. 事件（殼 → 網頁）
 | 名稱 | 酬載 | 觸發 |
@@ -55,6 +57,9 @@
 |---|---|---|
 | `clipboard_write.text` | string | 長度 ≤ 1,000,000（UTF-16 單元） |
 | `share_open.text`／`url`／`subject` | string | 各 ≤ 10,000；`url` 不檢查格式，由系統分享面板處理 |
+| `share_open.files` | ShareFile[] | 最多 5 個；每個 `data` ≤ 5,242,880 位元組；`name` 必須是單一檔名（不含路徑分隔、不為 `.`／`..`、≤ 128 字，與下載檔名規則相同）；`mimeType` 省略時依副檔名判斷，判斷不出來用 `application/octet-stream` |
+| `clipboard_write_image.data` | Uint8Array | ≤ 5,242,880 位元組，必須是 PNG 或 JPEG |
+| `clipboard_read_image` 回傳 | PNG | 超過 5,242,880 位元組回錯誤 `too_large`，不截斷 |
 | `notify_*.id` | int | 32 位元有號整數；省略時由殼配發（遞增，從 1 起，程序內不重複）；同一個 id 再次顯示／排程會取代原通知 |
 | `notify_*.title` | string | 1–200 字，必填 |
 | `notify_*.body` | string | ≤ 2,000 字，省略視為空 |
@@ -65,22 +70,26 @@
 | 錯誤碼 | 觸發條件 | 前端預期行為 |
 |---|---|---|
 | `invalid_argument` | 欄位缺漏、型別錯、超過上限、`atMs` 已過 | 修正參數；不重試 |
+| `too_large` | 剪貼簿裡的圖片超過上限（`clipboard_read_image`）| 改用較小的圖片；不要重試 |
 | `permission_denied` | `notify_show`／`notify_schedule` 時系統通知權限未授權 | 先以既有 `perm_request`（`notifications`）取得權限；永久拒絕時引導到系統設定 |
 
 ### 5. 行為規則
 - **權限不自動彈出**：`notify_*` 不會自己跳授權視窗；網頁先用既有的權限 handler 處理（權限一律經殼）。
 - **排程為非精確**：Android 以不需要精確鬧鐘權限的方式排程，系統可能延後數分鐘；需要準時請另案。
+- **重開機後（Android）**：裝置重新開機後，殼會把尚未到時間的排程通知重新排上；開機當下已經過了時間的不補發。（iOS、macOS 由系統保存待送通知；iOS 同時最多 64 則。）
 - **通知樣式**：rev 1 只有標題、內文與 payload；Android 使用單一預設頻道（id `aqutter_default`，名稱「通知」），圖示用 App 的啟動圖示。
 - **深層連結的設定屬於各 App**：自訂 scheme、App Links、Universal Links 的宣告在各 App 的原生專案，殼只負責收到後轉給網頁；網頁必須自行驗證收到的連結再導航，殼不過濾。
-- **剪貼簿**：只處理純文字；讀取是明確的 handler 呼叫，沒有背景監聽。
+- **剪貼簿**：文字與圖片各有 handler；讀取是明確的 handler 呼叫，沒有背景監聽。圖片剪貼簿由殼自己的原生程式實作（殼套件本身是 Flutter plugin，不依賴外部套件），App 不需要改原生專案；Android 的 provider 由殼的 manifest 自己宣告。Linux 不支援圖片剪貼簿（不列入能力表，呼叫回 `UNSUPPORTED_PLATFORM`）。
+- **分享檔案**：殼把 `files` 暫存到暫存目錄（每次分享一個獨立資料夾）交給系統分享面板，分享結束後盡力刪除；殼不修改檔案內容。分享圖片時 `mimeType` 請給 `image/png`／`image/jpeg`，系統才會用圖片的方式處理。
 - **不支援的平台**：handler 不列入 `platform_info` 的 capabilities（網頁用 `isBridgeSupported` 判斷）；被呼叫時回 `aqutterError`（`UNSUPPORTED_PLATFORM`）。
 
 ### 6. 相容性
-- 只新增 handler 與事件，既有名稱與行為完全不變；舊網頁不受影響。
+- 只新增 handler、事件與選填欄位，既有名稱與行為完全不變；rev 1 的網頁不受影響（`share_open` 不帶 `files` 時行為與 rev 1 相同）。
 - 舊版殼收到這些 handler 名稱會回 handler not found；網頁端以 `isBridgeSupported` 先判斷。
 
 ### 7. 變更紀錄
-- _(尚無)_
+- **rev 2（2026-10-30，已核准凍結）**：`share_open` 新增選填 `files`；新增 `clipboard_read_image`、`clipboard_write_image`；新增錯誤碼 `too_large`。原因：使用者要求分享與剪貼簿支援圖片（以 LOGO 做展示）。影響：`aqutter`（殼套件加入 Android／iOS／macOS／Windows 的原生程式；`share_open` 的檔案沿用既有的 `share_plus`）、`aqutter-js`（型別）、`aqutter-cli`（無範本變更）。決議：不引入外部剪貼簿套件，由框架自己實作；範圍為 Android、iOS、macOS、Windows，Linux 不做。
+- **rev 3（2026-10-30，已核准凍結）**：§5 新增「重開機後（Android）」一條行為說明，handler、欄位、錯誤碼不變。原因：本機通知改由框架自己實作（Iteration 1），Android 排程通知要在重開機後重新排上。影響：`aqutter`（殼）；`aqutter-js`、`aqutter-cli` 無程式變更。
 
 ## Impact Files
 - `template/app/android/app/build.gradle.kts:17`（`compileOptions`）與 `dependencies` 區 — 啟用去糖並加入相依（Phase 3 確認 dependencies 區的位置與版本）
@@ -108,10 +117,23 @@
 - **[啟動連結]** 啟動 App 的連結只由 `deeplink_initial` 取得，不走事件 — 理由：事件在網頁未連線時會被丟棄，冷啟必須有可重複讀取的來源。
 - **[流程]** 直接 main、不建 issue（Q1）；**[契約]** rev 1 凍結（2026-10-30 核准）。
 - **[完成後]** 預設「只 commit」，push 與移動 tag 依使用者之後的明確要求（待核准閘確認，Rule 16 不沿用）。
+- **[契約]** rev 2 凍結（2026-10-30 核准，Rule 29）：分享檔案、圖片剪貼簿、錯誤碼 too_large。
+- **[套件]** 圖片剪貼簿由框架自己實作、不引入外部套件（使用者決議）：殼套件宣告為 Flutter plugin，含 Android、iOS、macOS、Windows 的原生程式；Linux 不做。iOS、macOS 沒有裝置可編譯驗證（使用者已知並同意範圍）。
 
 ## Git Completion Policy
 - 直接 main：commit 自動；push 與移動 tag `0.0.0` 依使用者明確要求。
 - 跨 repo 各自 commit；建議次序：`aqutter-js` 先推並移 tag，再更新 `aqutter` 的 manifest。
+
+## Iteration 1 — 還原通知範本設定（2026-10-30，已核准）
+**原因**：`aqutter` 的同名計畫把本機通知改為框架自己實作（見該 repo 計畫的 Iteration 1），殼套件自己持有接收器與通知代理，App 範本不再需要 Android 核心函式庫去糖與 iOS 通知代理。契約不變。
+
+### Impact Files（Iteration 1）
+- `template/app/android/app/build.gradle.kts`（`compileOptions` 與 `dependencies` 區）— 還原 commit `7ceacc4` 加入的去糖設定
+- `template/app/ios/Runner/AppDelegate.swift` — 還原 commit `7ceacc4` 加入的 `UserNotifications` 匯入與通知代理設定
+- `dist/` — 若範本內嵌於 dist 則重建（先前確認過的方式照做）
+
+### Key Decisions（Iteration 1）
+- **[還原]** 以新的 commit 還原那兩項變更（不改寫歷史，且該 commit 尚未 push 的話仍以新 commit 還原，保持紀錄清楚）— 理由：避免之後的人以為範本需要這兩項。
 
 ## References
 - 本次對話的框架審查結果（缺少剪貼簿、分享、通知、深層連結）
