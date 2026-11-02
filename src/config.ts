@@ -73,6 +73,26 @@ export interface PluginDescriptor {
     /** 匯入路徑；省略為 `package:<package>/<package>.dart`。 */
     import?: string
   }
+  /** 選填：各功能需要使用者在原生專案補的設定；沒有則不需要任何設定。 */
+  native?: NativeDeclaration
+}
+
+/** `aqutter-plugin.json` 的 `native` 區塊（契約正本在 aqutter 的 docs/plugins.md）。 */
+export interface NativeDeclaration {
+  features: Record<string, NativeFeature>
+}
+
+export interface NativeFeature {
+  android?: { permissions?: AndroidPermission[] }
+  ios?: { infoPlist?: Record<string, string> }
+  macos?: { infoPlist?: Record<string, string> }
+  /** 無法機器檢查的要求，只顯示給人看。 */
+  note?: string
+}
+
+export interface AndroidPermission {
+  name: string
+  maxSdkVersion?: number
 }
 
 /** 已安裝於專案的 plugin（寫入 aqutter.config.json）。 */
@@ -81,6 +101,8 @@ export interface PluginEntry {
   /** npm 套件名（Dart 端原始碼隨該套件一起裝進 node_modules）。 */
   npm: string
   dart: PluginDescriptor['dart']
+  /** 使用者選用的功能；省略代表描述檔宣告的全部功能。 */
+  features?: string[]
 }
 
 export interface AqutterConfig {

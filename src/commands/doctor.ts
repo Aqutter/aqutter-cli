@@ -22,6 +22,8 @@ import pkg from '../../package.json'
 import type { Project } from '../config.ts'
 import { assertCliSupports, compareVersions, describeSource, loadConfiguredManifest, readManifestFlags, resolveRelease } from '../manifest.ts'
 import type { ManifestRelease } from '../manifest.ts'
+import { collectRequirements, findNativeGaps, selectFeatures } from '../native.ts'
+import { readInstalledDescriptor } from '../plugins.ts'
 import { IS_WIN } from '../shared.ts'
 import {
   LOCKED_PACKAGES,
@@ -85,6 +87,8 @@ export interface Facts {
   fvmrc: { version: string | null } | null
   npmSpecs: NpmSpec[]
   lock: Record<string, LockGitPackage> | null
+  /** 已登記的 plugin 所選功能還沒補上的原生設定（契約 plugin-native-requirements）。 */
+  nativeGaps?: { plugin: string, gaps: string[] }[]
 }
 
 const UPGRADE_HINT = '執行 `aqutter upgrade`'
@@ -240,6 +244,16 @@ export const diagnose = (facts: Facts): Finding[] => {
       }
     }
   }
+
+  // 6. plugin 宣告的原生設定是否已補上（只讀；缺漏是警告：建置不受影響，執行時才出問題）
+  for (const item of facts.nativeGaps ?? []) {
+    add({
+      level: 'warn',
+      title: `plugin「${item.plugin}」需要的原生設定還沒補上`,
+      detail: item.gaps.join('；'),
+      fix: '依上列補到 App 的 AndroidManifest.xml／Info.plist（CLI 不會替你改）；不需要某個功能時用 `aqutter plugin add … --features=` 縮小範圍。',
+    })
+  }
   return findings
 }
 
@@ -278,7 +292,29 @@ export const gatherFacts = (project: Project, expected: ExpectedProfile): Facts 
     fvmrc: fvmrcText === null ? null : { version: parseFvmrc(fvmrcText) },
     npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
     lock: lockText === null ? null : parseLock(lockText),
+    nativeGaps: gatherNativeGaps(project),
   }
+}
+
+const gatherNativeGaps = (project: Project): { plugin: string, gaps: string[] }[] => {
+  const result: { plugin: string, gaps: string[] }[] = []
+  for (const entry of project.config.plugins) {
+    try {
+      const descriptor = readInstalledDescriptor(project.root, entry.npm)
+      if (descriptor.native === undefined) {
+        continue
+      }
+      const requirements = collectRequirements(descriptor, selectFeatures(descriptor, entry.features))
+      const gaps = findNativeGaps(project, requirements).map(gap => gap.text)
+      if (gaps.length > 0) {
+        result.push({ plugin: entry.id, gaps })
+      }
+    }
+    catch {
+      // 套件尚未安裝、描述檔壞掉或功能名過期：這不是原生設定的問題，交給 plugin 指令回報
+    }
+  }
+  return result
 }
 
 const LABEL: Record<Level, string> = { ok: '[ok]  ', warn: '[警告]', error: '[錯誤]' }

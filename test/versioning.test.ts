@@ -304,6 +304,16 @@ describe('diagnose', () => {
     expect(found.some(line => line.includes('殼 ref'))).toBe(false)
   })
 
+  it('warns, never errors, when a plugin still lacks the native settings it declared', () => {
+    const found = diagnose({ ...goodFacts(), nativeGaps: [{ plugin: 'biometrics', gaps: ['AndroidManifest.xml 缺 USE_BIOMETRIC'] }] })
+      .filter(f => f.level !== 'ok')
+
+    expect(found).toHaveLength(1)
+    expect(found[0].level).toBe('warn')
+    expect(found[0].title).toContain('biometrics')
+    expect(found[0].detail).toContain('USE_BIOMETRIC')
+  })
+
   it('errors when Flutter is missing or outside the allowed range', () => {
     expect(levels({ ...goodFacts(), installedFlutter: null })[0]).toMatch(/^error:/)
     expect(levels({ ...goodFacts(), installedFlutter: '3.38.6' })[0]).toMatch(/^error:Flutter 版本不符/)

@@ -16,7 +16,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 import { loadProject } from '../config.ts'
-import type { Project } from '../config.ts'
+import type { PluginDescriptor, Project } from '../config.ts'
+import { collectRequirements, findNativeGaps, selectFeatures } from '../native.ts'
 import { IS_WIN, parseArgs } from '../shared.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
@@ -138,7 +139,12 @@ const create = async (cwd: string, argv: string[]): Promise<void> => {
 }
 
 const add = (cwd: string, argv: string[]): void => {
-  const { positional } = parseArgs(argv.filter(arg => arg !== '--no-install'))
+  // 契約允許 `--features a,b`（空白寫法）：先併成 `--features=a,b`，才不會被當成位置參數。
+  const merged: string[] = []
+  for (let index = 0; index < argv.length; index++) {
+    merged.push(argv[index] === '--features' && argv[index + 1] !== undefined ? `--features=${argv[++index]}` : argv[index])
+  }
+  const { positional, flags } = parseArgs(merged.filter(arg => arg !== '--no-install'))
   const source = positional[0]
   if (!source) {
     return fail('用法：aqutter plugin add <來源>（套件名、github:owner/repo 或 file:路徑）')
@@ -164,12 +170,39 @@ const add = (cwd: string, argv: string[]): void => {
   if (project.config.plugins.some(entry => entry.id === descriptor.id && entry.npm !== npmName)) {
     return fail(`plugin id「${descriptor.id}」已被另一個套件使用。`)
   }
+  let features: string[] | undefined
+  try {
+    features = flags.features === undefined ? undefined : selectFeatures(descriptor, flags.features.split(',').map(name => name.trim()).filter(Boolean))
+  }
+  catch (error) {
+    return fail((error as Error).message)
+  }
   const created = updateConfigPlugins(project, plugins => [
     ...plugins.filter(entry => entry.id !== descriptor.id),
-    { id: descriptor.id, npm: npmName, dart: descriptor.dart },
+    { id: descriptor.id, npm: npmName, dart: descriptor.dart, ...(features === undefined ? {} : { features }) },
   ].sort((a, b) => a.id.localeCompare(b.id)))
   console.log(`[${TAG}] 已加入 plugin「${descriptor.id}」（${npmName}）。請在 ${project.config.appDir}/ 執行 flutter pub get。`)
   reportCreated(project, created)
+  reportNativeGaps(project, descriptor, features)
+}
+
+/** 只讀使用者的原生檔，列出還要補的設定；CLI 不替使用者改。 */
+const reportNativeGaps = (project: Project, descriptor: PluginDescriptor, features: string[] | undefined): void => {
+  if (descriptor.native === undefined) {
+    return
+  }
+  const requirements = collectRequirements(descriptor, selectFeatures(descriptor, features))
+  const gaps = findNativeGaps(project, requirements)
+  if (gaps.length === 0 && requirements.notes.length === 0) {
+    return
+  }
+  console.log(`[${TAG}] 「${descriptor.id}」需要你在原生專案補的設定（CLI 不會替你改）：`)
+  for (const gap of gaps) {
+    console.log(`  - ${gap.text}`)
+  }
+  for (const note of requirements.notes) {
+    console.log(`  - ${note}`)
+  }
 }
 
 const reportCreated = (project: Project, created: string[]): void => {

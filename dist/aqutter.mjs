@@ -857,6 +857,321 @@ var init_manifest = __esm({
   }
 });
 
+// src/native.ts
+import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
+import { join as join4 } from "node:path";
+var selectFeatures, collectRequirements, readIfExists, escapeRegExp, plistHasKey, manifestHasPermission, findNativeGaps;
+var init_native = __esm({
+  "src/native.ts"() {
+    "use strict";
+    selectFeatures = (descriptor, requested) => {
+      const available = Object.keys(descriptor.native?.features ?? {});
+      if (requested === void 0) {
+        return available;
+      }
+      if (available.length === 0) {
+        throw new Error(`plugin\u300C${descriptor.id}\u300D\u6C92\u6709\u5BA3\u544A\u4EFB\u4F55\u539F\u751F\u529F\u80FD\uFF0C\u4E0D\u80FD\u6307\u5B9A --features\u3002`);
+      }
+      const unknown = requested.filter((name) => !available.includes(name));
+      if (unknown.length > 0) {
+        throw new Error(`plugin\u300C${descriptor.id}\u300D\u6C92\u6709\u529F\u80FD\uFF1A${unknown.join("\u3001")}\u3002\u53EF\u7528\u7684\u529F\u80FD\uFF1A${available.join("\u3001")}\u3002`);
+      }
+      return requested;
+    };
+    collectRequirements = (descriptor, features) => {
+      const result = { permissions: [], ios: {}, macos: {}, notes: [] };
+      for (const name of features) {
+        const feature = descriptor.native?.features[name];
+        if (feature === void 0) {
+          continue;
+        }
+        for (const permission of feature.android?.permissions ?? []) {
+          const existing = result.permissions.find((item) => item.name === permission.name);
+          if (existing === void 0) {
+            result.permissions.push({ ...permission });
+          } else if (permission.maxSdkVersion === void 0 || existing.maxSdkVersion === void 0) {
+            delete existing.maxSdkVersion;
+          } else {
+            existing.maxSdkVersion = Math.max(existing.maxSdkVersion, permission.maxSdkVersion);
+          }
+        }
+        Object.assign(result.ios, feature.ios?.infoPlist);
+        Object.assign(result.macos, feature.macos?.infoPlist);
+        if (feature.note !== void 0) {
+          result.notes.push(feature.note);
+        }
+      }
+      return result;
+    };
+    readIfExists = (file) => existsSync3(file) ? readFileSync4(file, "utf8") : null;
+    escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    plistHasKey = (plist, key) => {
+      return new RegExp(`<key>${escapeRegExp(key)}</key>\\s*<string>\\s*[^<\\s][^<]*</string>`).test(plist);
+    };
+    manifestHasPermission = (manifest, name) => {
+      return new RegExp(`<uses-permission[^>]*android:name\\s*=\\s*"${escapeRegExp(name)}"`).test(manifest);
+    };
+    findNativeGaps = (project, requirements) => {
+      const gaps = [];
+      const manifest = readIfExists(join4(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"));
+      if (manifest !== null) {
+        for (const permission of requirements.permissions) {
+          if (!manifestHasPermission(manifest, permission.name)) {
+            const max2 = permission.maxSdkVersion === void 0 ? "" : ` android:maxSdkVersion="${permission.maxSdkVersion}"`;
+            gaps.push({ text: `AndroidManifest.xml \u7F3A <uses-permission android:name="${permission.name}"${max2} />` });
+          }
+        }
+      }
+      for (const platform of ["ios", "macos"]) {
+        const plist = readIfExists(join4(project.appDir, platform, "Runner", "Info.plist"));
+        if (plist === null) {
+          continue;
+        }
+        for (const [key, text] of Object.entries(requirements[platform])) {
+          if (!plistHasKey(plist, key)) {
+            gaps.push({ text: `${platform}/Runner/Info.plist \u7F3A ${key}\uFF08\u5EFA\u8B70\u6587\u5B57\uFF1A${text}\uFF09` });
+          }
+        }
+      }
+      return gaps;
+    };
+  }
+});
+
+// src/plugins.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join5, relative } from "node:path";
+var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, FEATURE_PATTERN, parseInfoPlist, parseNative, importOf, pluginFileName, pluginFactoryName, renderPluginFile, renderPluginsDart, pluginsDir, pluginFilePath, scaffoldPluginFiles, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
+var init_plugins = __esm({
+  "src/plugins.ts"() {
+    "use strict";
+    init_config();
+    PLUGIN_DESCRIPTOR_FILE = "aqutter-plugin.json";
+    PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+    PUBSPEC_BEGIN = "  # aqutter-plugins:begin\uFF08\u7531 `aqutter plugin` \u7DAD\u8B77\uFF0C\u8ACB\u52FF\u624B\u6539\uFF09";
+    PUBSPEC_END = "  # aqutter-plugins:end";
+    PLUGINS_DART_FILE = "aqutter_plugins.dart";
+    DART_PACKAGE_PATTERN = /^[a-z][a-z0-9_]*$/;
+    DART_CLASS_PATTERN = /^[A-Z][A-Za-z0-9_]*$/;
+    parseDescriptor = (raw, source) => {
+      const fail11 = (reason) => {
+        throw new Error(`${source} \u4E0D\u5408\u6CD5\uFF1A${reason}`);
+      };
+      if (typeof raw !== "object" || raw === null) {
+        return fail11("\u5FC5\u9808\u662F JSON \u7269\u4EF6");
+      }
+      const value = raw;
+      if (value.schema !== 1) {
+        fail11("schema \u5FC5\u9808\u70BA 1");
+      }
+      if (typeof value.id !== "string" || !PLUGIN_ID_PATTERN.test(value.id)) {
+        fail11(`id \u5FC5\u9808\u7B26\u5408 ${PLUGIN_ID_PATTERN}`);
+      }
+      const dart = value.dart;
+      if (typeof dart !== "object" || dart === null) {
+        return fail11("\u7F3A\u5C11 dart \u5340\u584A");
+      }
+      if (typeof dart.package !== "string" || !DART_PACKAGE_PATTERN.test(dart.package)) {
+        fail11("dart.package \u5FC5\u9808\u662F Dart \u5957\u4EF6\u540D\uFF08\u5C0F\u5BEB snake_case\uFF09");
+      }
+      if (typeof dart.class !== "string" || !DART_CLASS_PATTERN.test(dart.class)) {
+        fail11("dart.class \u5FC5\u9808\u662F Dart \u985E\u5225\u540D");
+      }
+      if (dart.import !== void 0 && typeof dart.import !== "string") {
+        fail11("dart.import \u5FC5\u9808\u662F\u5B57\u4E32");
+      }
+      return {
+        schema: 1,
+        id: value.id,
+        dart: {
+          package: dart.package,
+          class: dart.class,
+          ...dart.import === void 0 ? {} : { import: dart.import }
+        },
+        ...value.native === void 0 ? {} : { native: parseNative(value.native, fail11) }
+      };
+    };
+    FEATURE_PATTERN = /^[a-z][a-z0-9-]*$/;
+    parseInfoPlist = (raw, where, fail11) => {
+      if (raw === void 0) {
+        return void 0;
+      }
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return fail11(`${where}.infoPlist \u5FC5\u9808\u662F\u7269\u4EF6`);
+      }
+      for (const [key, text] of Object.entries(raw)) {
+        if (typeof text !== "string") {
+          fail11(`${where}.infoPlist.${key} \u5FC5\u9808\u662F\u5B57\u4E32`);
+        }
+      }
+      return raw;
+    };
+    parseNative = (raw, fail11) => {
+      const features = typeof raw === "object" && raw !== null ? raw.features : void 0;
+      if (typeof features !== "object" || features === null || Array.isArray(features) || Object.keys(features).length === 0) {
+        return fail11("native.features \u5FC5\u9808\u662F\u81F3\u5C11\u4E00\u500B\u529F\u80FD\u7684\u7269\u4EF6");
+      }
+      const result = {};
+      for (const [name, rawFeature] of Object.entries(features)) {
+        const where = `native.features.${name}`;
+        if (!FEATURE_PATTERN.test(name)) {
+          fail11(`\u529F\u80FD\u540D\u300C${name}\u300D\u5FC5\u9808\u7B26\u5408 ${FEATURE_PATTERN}`);
+        }
+        if (typeof rawFeature !== "object" || rawFeature === null) {
+          return fail11(`${where} \u5FC5\u9808\u662F\u7269\u4EF6`);
+        }
+        const feature = rawFeature;
+        const out = {};
+        const android = feature.android;
+        if (android !== void 0) {
+          const list = android.permissions ?? [];
+          if (!Array.isArray(list)) {
+            return fail11(`${where}.android.permissions \u5FC5\u9808\u662F\u9663\u5217`);
+          }
+          out.android = {
+            permissions: list.map((item, index) => {
+              const entry = item;
+              if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name.includes(".")) {
+                return fail11(`${where}.android.permissions[${index}].name \u5FC5\u9808\u662F\u5B8C\u6574\u7684\u6B0A\u9650\u540D\u7A31`);
+              }
+              if (entry.maxSdkVersion !== void 0 && !Number.isInteger(entry.maxSdkVersion)) {
+                fail11(`${where}.android.permissions[${index}].maxSdkVersion \u5FC5\u9808\u662F\u6574\u6578`);
+              }
+              return { name: entry.name, ...entry.maxSdkVersion === void 0 ? {} : { maxSdkVersion: entry.maxSdkVersion } };
+            })
+          };
+        }
+        for (const platform of ["ios", "macos"]) {
+          const block = feature[platform];
+          if (block !== void 0) {
+            const infoPlist = parseInfoPlist(block.infoPlist, `${where}.${platform}`, fail11);
+            out[platform] = infoPlist === void 0 ? {} : { infoPlist };
+          }
+        }
+        if (feature.note !== void 0) {
+          if (typeof feature.note !== "string") {
+            fail11(`${where}.note \u5FC5\u9808\u662F\u5B57\u4E32`);
+          }
+          out.note = feature.note;
+        }
+        result[name] = out;
+      }
+      return { features: result };
+    };
+    importOf = (entry) => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`;
+    pluginFileName = (id) => `${id.replace(/-/g, "_")}_plugin.dart`;
+    pluginFactoryName = (dartClass) => `build${dartClass}`;
+    renderPluginFile = (entry) => {
+      return [
+        "import 'dart:async';",
+        "",
+        "import 'package:aqutter/aqutter.dart';",
+        `import '${importOf(entry)}';`,
+        "",
+        "/// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u88E1\uFF1Baqutter CLI \u4E4B\u5F8C\u4E0D\u6703\u8986\u84CB\u9019\u500B\u6A94\u6848\u3002",
+        `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
+        ""
+      ].join("\n");
+    };
+    renderPluginsDart = (plugins) => {
+      const imports = plugins.map((entry) => `plugins/${pluginFileName(entry.id)}`).sort();
+      const lines = [
+        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\uFF0C",
+        "// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u8ACB\u6539 lib/plugins/ \u5167\u5404 plugin \u7684\u6A94\u6848\u3002",
+        "import 'package:aqutter/aqutter.dart';",
+        ...imports.map((path) => `import '${path}';`),
+        "",
+        "/// \u50B3\u7D66 `runAqutter(plugins: aqutterPlugins)`\u3002",
+        plugins.length === 0 ? "final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];" : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[
+${plugins.map((entry) => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join("\n")}
+];`,
+        ""
+      ];
+      return lines.join("\n");
+    };
+    pluginsDir = (project) => join5(project.appDir, "lib", "plugins");
+    pluginFilePath = (project, id) => join5(pluginsDir(project), pluginFileName(id));
+    scaffoldPluginFiles = (project, plugins) => {
+      const missing = [];
+      for (const entry of plugins) {
+        const file = pluginFilePath(project, entry.id);
+        if (!existsSync4(file)) {
+          missing.push(entry);
+          continue;
+        }
+        const factory = pluginFactoryName(entry.dart.class);
+        if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync5(file, "utf8"))) {
+          throw new Error(`${file} \u5DF2\u5B58\u5728\u4F46\u6C92\u6709\u9810\u671F\u7684\u51FD\u5F0F ${factory}\uFF1B\u8ACB\u88DC\u4E0A ${factory}(AqutterBootContext context)\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u5F8C\u91CD\u65B0\u57F7\u884C aqutter plugin sync\u3002`);
+        }
+      }
+      return missing.map((entry) => {
+        const file = pluginFilePath(project, entry.id);
+        mkdirSync3(pluginsDir(project), { recursive: true });
+        writeFileSync2(file, renderPluginFile(entry));
+        return file;
+      });
+    };
+    renderPubspecBlock = (plugins, projectRoot, appDir) => {
+      return plugins.flatMap((entry) => {
+        const path = relative(appDir, join5(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
+        return [`  ${entry.dart.package}:`, `    path: ${path}`];
+      });
+    };
+    applyPubspecBlock = (pubspec, block) => {
+      const begin = pubspec.indexOf(PUBSPEC_BEGIN);
+      const end = pubspec.indexOf(PUBSPEC_END);
+      if (begin === -1 || end === -1 || end < begin) {
+        throw new Error(`pubspec.yaml \u7F3A\u5C11 plugin \u53D7\u7BA1\u5340\u584A\u6A19\u8A18\uFF08${PUBSPEC_BEGIN.trim()} \u2026 ${PUBSPEC_END.trim()}\uFF09\uFF0C\u8ACB\u5728 dependencies: \u5167\u88DC\u4E0A\u9019\u5169\u884C\u3002`);
+      }
+      const middle = block.length === 0 ? "" : `${block.join("\n")}
+`;
+      return `${pubspec.slice(0, begin)}${PUBSPEC_BEGIN}
+${middle}${pubspec.slice(end)}`;
+    };
+    syncPlugins = (project) => {
+      const plugins = project.config.plugins;
+      const pubspecPath = join5(project.appDir, "pubspec.yaml");
+      const original = readFileSync5(pubspecPath, "utf8");
+      const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
+      const created = scaffoldPluginFiles(project, plugins);
+      if (next !== original) {
+        writeFileSync2(pubspecPath, next);
+      }
+      writeFileSync2(join5(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
+      return created;
+    };
+    updateConfigPlugins = (project, update) => {
+      const previous = project.config.plugins;
+      const next = update([...previous]);
+      project.config.plugins = next;
+      let created;
+      try {
+        created = syncPlugins(project);
+      } catch (error) {
+        project.config.plugins = previous;
+        throw error;
+      }
+      const file = join5(project.root, CONFIG_FILE);
+      const raw = JSON.parse(readFileSync5(file, "utf8"));
+      if (next.length === 0) {
+        delete raw.plugins;
+      } else {
+        raw.plugins = next;
+      }
+      writeFileSync2(file, `${JSON.stringify(raw, null, 2)}
+`);
+      return created;
+    };
+    readInstalledDescriptor = (projectRoot, npmName) => {
+      const file = join5(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
+      if (!existsSync4(file)) {
+        throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
+      }
+      return parseDescriptor(JSON.parse(readFileSync5(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
+    };
+  }
+});
+
 // src/versioning.ts
 var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, LEGACY_CLI_SPEC, CURRENT_CLI_SPEC, CLIENT_GITHUB_SPEC, classifyCliSpec, isClientGithubSpec, cliInstallSpec, readNpmSpecs, rewritePackageJson, parseLock, lowerBound, satisfies, detectDowngrades;
 var init_versioning = __esm({
@@ -1145,14 +1460,16 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
-import { join as join4 } from "node:path";
-var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists, detectFlutterVersion, gatherFacts, LABEL, runDoctor, loadExpectedProfile;
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { join as join6 } from "node:path";
+var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists2, detectFlutterVersion, gatherFacts, gatherNativeGaps, LABEL, runDoctor, loadExpectedProfile;
 var init_doctor = __esm({
   "src/commands/doctor.ts"() {
     "use strict";
     init_package();
     init_manifest();
+    init_native();
+    init_plugins();
     init_shared();
     init_versioning();
     TAG = "doctor";
@@ -1289,9 +1606,17 @@ var init_doctor = __esm({
           }
         }
       }
+      for (const item of facts.nativeGaps ?? []) {
+        add2({
+          level: "warn",
+          title: `plugin\u300C${item.plugin}\u300D\u9700\u8981\u7684\u539F\u751F\u8A2D\u5B9A\u9084\u6C92\u88DC\u4E0A`,
+          detail: item.gaps.join("\uFF1B"),
+          fix: "\u4F9D\u4E0A\u5217\u88DC\u5230 App \u7684 AndroidManifest.xml\uFF0FInfo.plist\uFF08CLI \u4E0D\u6703\u66FF\u4F60\u6539\uFF09\uFF1B\u4E0D\u9700\u8981\u67D0\u500B\u529F\u80FD\u6642\u7528 `aqutter plugin add \u2026 --features=` \u7E2E\u5C0F\u7BC4\u570D\u3002"
+        });
+      }
       return findings;
     };
-    readIfExists = (file) => existsSync3(file) ? readFileSync4(file, "utf8") : null;
+    readIfExists2 = (file) => existsSync5(file) ? readFileSync6(file, "utf8") : null;
     detectFlutterVersion = (cwd) => {
       const result = spawnSync2("flutter", ["--version", "--machine"], { cwd, encoding: "utf8", shell: IS_WIN });
       const out = result.stdout ?? "";
@@ -1308,10 +1633,10 @@ var init_doctor = __esm({
       }
     };
     gatherFacts = (project, expected) => {
-      const pubspecText = readIfExists(join4(project.appDir, "pubspec.yaml"));
-      const fvmrcText = readIfExists(join4(project.appDir, ".fvmrc"));
-      const packageText = readIfExists(join4(project.root, "package.json"));
-      const lockText = readIfExists(join4(project.appDir, "pubspec.lock"));
+      const pubspecText = readIfExists2(join6(project.appDir, "pubspec.yaml"));
+      const fvmrcText = readIfExists2(join6(project.appDir, ".fvmrc"));
+      const packageText = readIfExists2(join6(project.root, "package.json"));
+      const lockText = readIfExists2(join6(project.appDir, "pubspec.lock"));
       return {
         expected,
         cliVersion: package_default.version,
@@ -1319,8 +1644,27 @@ var init_doctor = __esm({
         pubspec: pubspecText === null ? null : parsePubspec(pubspecText),
         fvmrc: fvmrcText === null ? null : { version: parseFvmrc(fvmrcText) },
         npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
-        lock: lockText === null ? null : parseLock(lockText)
+        lock: lockText === null ? null : parseLock(lockText),
+        nativeGaps: gatherNativeGaps(project)
       };
+    };
+    gatherNativeGaps = (project) => {
+      const result = [];
+      for (const entry of project.config.plugins) {
+        try {
+          const descriptor = readInstalledDescriptor(project.root, entry.npm);
+          if (descriptor.native === void 0) {
+            continue;
+          }
+          const requirements = collectRequirements(descriptor, selectFeatures(descriptor, entry.features));
+          const gaps = findNativeGaps(project, requirements).map((gap) => gap.text);
+          if (gaps.length > 0) {
+            result.push({ plugin: entry.id, gaps });
+          }
+        } catch {
+        }
+      }
+      return result;
     };
     LABEL = { ok: "[ok]  ", warn: "[\u8B66\u544A]", error: "[\u932F\u8AA4]" };
     runDoctor = async (project, argv) => {
@@ -1357,8 +1701,8 @@ var init_doctor = __esm({
 });
 
 // src/template.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync5, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync2, copyFileSync } from "node:fs";
-import { dirname as dirname2, join as join5, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync7, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync3, copyFileSync } from "node:fs";
+import { dirname as dirname2, join as join7, resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
 var GITIGNORE_STORED_NAME, BINARY_EXTENSIONS, isBinary, substitute, findTemplateRoot, renderTree;
 var init_template = __esm({
@@ -1400,8 +1744,8 @@ var init_template = __esm({
     findTemplateRoot = () => {
       let dir = dirname2(fileURLToPath(import.meta.url));
       for (let depth = 0; depth < 6; depth += 1) {
-        const candidate = join5(dir, "template");
-        if (existsSync4(join5(candidate, "app"))) {
+        const candidate = join7(dir, "template");
+        if (existsSync6(join7(candidate, "app"))) {
           return candidate;
         }
         dir = resolve2(dir, "..");
@@ -1413,23 +1757,23 @@ var init_template = __esm({
       const skipped = [];
       const walk2 = (from, to) => {
         for (const name of readdirSync2(from)) {
-          const src = join5(from, name);
+          const src = join7(from, name);
           const outName = name === GITIGNORE_STORED_NAME ? ".gitignore" : substitute(name, variables);
-          const dst = join5(to, outName);
+          const dst = join7(to, outName);
           if (statSync3(src).isDirectory()) {
             walk2(src, dst);
             continue;
           }
-          if (existsSync4(dst) && !overwrite) {
+          if (existsSync6(dst) && !overwrite) {
             skipped.push(dst);
             continue;
           }
-          mkdirSync3(dirname2(dst), { recursive: true });
-          const content = readFileSync5(src);
+          mkdirSync4(dirname2(dst), { recursive: true });
+          const content = readFileSync7(src);
           if (isBinary(src, content)) {
             copyFileSync(src, dst);
           } else {
-            writeFileSync2(dst, substitute(content.toString("utf8"), variables));
+            writeFileSync3(dst, substitute(content.toString("utf8"), variables));
           }
           written.push(dst);
         }
@@ -1450,8 +1794,8 @@ __export(init_exports, {
   toDisplayName: () => toDisplayName,
   usePathDependency: () => usePathDependency
 });
-import { appendFileSync, existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join6, relative, resolve as resolve3 } from "node:path";
+import { appendFileSync, existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "node:fs";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join8, relative as relative2, resolve as resolve3 } from "node:path";
 var TAG2, fail, toAppName, toCamel, toDisplayName, detectFramework, GITIGNORE_ENTRIES, appendGitignore, usePathDependency, runInit;
 var init_init = __esm({
   "src/commands/init.ts"() {
@@ -1475,7 +1819,7 @@ var init_init = __esm({
     toCamel = (snake) => snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
     toDisplayName = (snake) => snake.split("_").filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
     detectFramework = (root) => {
-      const has = (prefix) => ["ts", "js", "mjs", "mts"].some((ext) => existsSync5(join6(root, `${prefix}.config.${ext}`)));
+      const has = (prefix) => ["ts", "js", "mjs", "mts"].some((ext) => existsSync7(join8(root, `${prefix}.config.${ext}`)));
       if (has("nuxt")) {
         return "nuxt";
       }
@@ -1494,8 +1838,8 @@ var init_init = __esm({
       "!.env/.env.example"
     ];
     appendGitignore = (root, appDir) => {
-      const file = join6(root, ".gitignore");
-      const current = existsSync5(file) ? readFileSync6(file, "utf8") : "";
+      const file = join8(root, ".gitignore");
+      const current = existsSync7(file) ? readFileSync8(file, "utf8") : "";
       const wanted = [
         ...GITIGNORE_ENTRIES,
         `/${appDir}/assets/seed/*`,
@@ -1521,10 +1865,10 @@ ${missing.join("\n")}
       const force = argv.includes("--force");
       const root = resolve3(cwd);
       let packageName = basename2(root);
-      const packageJson = join6(root, "package.json");
-      if (existsSync5(packageJson)) {
+      const packageJson = join8(root, "package.json");
+      if (existsSync7(packageJson)) {
         try {
-          packageName = JSON.parse(readFileSync6(packageJson, "utf8")).name ?? packageName;
+          packageName = JSON.parse(readFileSync8(packageJson, "utf8")).name ?? packageName;
         } catch {
         }
       }
@@ -1543,8 +1887,8 @@ ${missing.join("\n")}
       const appDirName = flags["app-dir"] ?? DEFAULT_CONFIG.appDir;
       const appDir = resolve3(root, appDirName);
       const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile(readManifestFlags(argv))).expected.version);
-      const configFile = join6(root, CONFIG_FILE);
-      if (existsSync5(configFile) && !force) {
+      const configFile = join8(root, CONFIG_FILE);
+      if (existsSync7(configFile) && !force) {
         fail(`${CONFIG_FILE} \u5DF2\u5B58\u5728\u3002\u8981\u91CD\u65B0\u5C55\u958B\u8ACB\u52A0 --force\u3002`);
       }
       const config = {
@@ -1552,7 +1896,7 @@ ${missing.join("\n")}
         web: { framework }
       };
       const shellConfig = flags["shell-path"] ? { path: flags["shell-path"] } : void 0;
-      writeFileSync3(configFile, `${JSON.stringify(shellConfig ? { ...config, shell: shellConfig } : config, null, 2)}
+      writeFileSync4(configFile, `${JSON.stringify(shellConfig ? { ...config, shell: shellConfig } : config, null, 2)}
 `);
       console.log(`[${TAG2}] \u5BEB\u5165 ${CONFIG_FILE}\uFF08framework=${framework}\uFF09`);
       const variables = {
@@ -1564,18 +1908,18 @@ ${missing.join("\n")}
         shellRef
       };
       const templateRoot = findTemplateRoot();
-      const { written, skipped } = renderTree(join6(templateRoot, "app"), appDir, variables, { overwrite: force });
-      console.log(`[${TAG2}] \u5C55\u958B ${relative(root, appDir) || "."}/\uFF08${written.length} \u500B\u6A94\u6848\uFF0C\u7565\u904E\u5DF2\u5B58\u5728 ${skipped.length} \u500B\uFF09`);
+      const { written, skipped } = renderTree(join8(templateRoot, "app"), appDir, variables, { overwrite: force });
+      console.log(`[${TAG2}] \u5C55\u958B ${relative2(root, appDir) || "."}/\uFF08${written.length} \u500B\u6A94\u6848\uFF0C\u7565\u904E\u5DF2\u5B58\u5728 ${skipped.length} \u500B\uFF09`);
       if (flags["shell-path"]) {
-        const pubspecPath = join6(appDir, "pubspec.yaml");
+        const pubspecPath = join8(appDir, "pubspec.yaml");
         const shellFlag = flags["shell-path"];
-        const rel = isAbsolute2(shellFlag) ? shellFlag : relative(appDir, resolve3(root, shellFlag)).split("\\").join("/");
-        writeFileSync3(pubspecPath, usePathDependency(readFileSync6(pubspecPath, "utf8"), rel));
+        const rel = isAbsolute2(shellFlag) ? shellFlag : relative2(appDir, resolve3(root, shellFlag)).split("\\").join("/");
+        writeFileSync4(pubspecPath, usePathDependency(readFileSync8(pubspecPath, "utf8"), rel));
         console.log(`[${TAG2}] \u6BBC\u4F9D\u8CF4\u6539\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF1A${rel}`);
       }
-      const envDir = join6(root, DEFAULT_CONFIG.envDir);
-      mkdirSync4(envDir, { recursive: true });
-      const envResult = renderTree(join6(templateRoot, "env"), envDir, variables);
+      const envDir = join8(root, DEFAULT_CONFIG.envDir);
+      mkdirSync5(envDir, { recursive: true });
+      const envResult = renderTree(join8(templateRoot, "env"), envDir, variables);
       if (envResult.written.length > 0) {
         console.log(`[${TAG2}] \u5BEB\u5165 ${DEFAULT_CONFIG.envDir}/.env.example\uFF1B\u8ACB\u8907\u88FD\u70BA ${DEFAULT_CONFIG.envDir}/.env.dev \u4E26\u586B\u503C\u3002`);
       }
@@ -2587,8 +2931,8 @@ __export(bundle_exports, {
   signBundle: () => signBundle
 });
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join7, resolve as resolve4 } from "node:path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
+import { join as join9, resolve as resolve4 } from "node:path";
 var BUNDLE_SIGNATURE_PREFIX, DEFAULT_KEY_DIR, PRIVATE_KEY_FILE, SIGNING_KEY_ENV, VERSION_ENTRY, bundleSignatureMessage, publicKeyBase64, generateSigningKey, readBundleVersion, signBundle, parseBundleArgs, USAGE, runKeygen, loadPrivateKey, runSign, runBundle;
 var init_bundle = __esm({
   "src/commands/bundle.ts"() {
@@ -2691,13 +3035,13 @@ ${sha256Hex.toLowerCase()}
         throw new ConfigError(USAGE);
       }
       const dir = resolve4(cwd, args.flags.out ?? DEFAULT_KEY_DIR);
-      const keyFile = join7(dir, PRIVATE_KEY_FILE);
-      if (existsSync6(keyFile)) {
+      const keyFile = join9(dir, PRIVATE_KEY_FILE);
+      if (existsSync8(keyFile)) {
         throw new ConfigError(`${keyFile} \u5DF2\u5B58\u5728\uFF0C\u4E0D\u8986\u84CB\u3002\u8981\u7522\u751F\u65B0\u7684\u91D1\u9470\u8ACB\u63DB\u4E00\u500B\u8CC7\u6599\u593E\uFF08--out\uFF09\u6216\u5148\u81EA\u884C\u8655\u7406\u820A\u6A94\u3002`);
       }
       const { privatePem, publicKey } = generateSigningKey();
-      mkdirSync5(dir, { recursive: true });
-      writeFileSync4(keyFile, privatePem, { flag: "wx", mode: 384 });
+      mkdirSync6(dir, { recursive: true });
+      writeFileSync5(keyFile, privatePem, { flag: "wx", mode: 384 });
       console.log(`\u5DF2\u7522\u751F\u79C1\u9470\uFF1A${keyFile}`);
       console.log("\u79C1\u9470\u53EA\u7559\u5728\u7C3D\u7F72\u7AEF\uFF1A\u4E0D\u8981\u63D0\u4EA4\u9032\u7248\u63A7\u3001\u4E0D\u8981\u653E\u9032 App \u6216\u7DE8\u8B6F\u671F env\u3002\u5EFA\u8B70\u628A\u8CC7\u6599\u593E\u52A0\u5165 .gitignore\uFF0C\u4E26\u53E6\u5916\u5099\u4EFD\u5230\u5BC6\u78BC\u7BA1\u7406\u5668\u3002");
       console.log("");
@@ -2707,10 +3051,10 @@ ${sha256Hex.toLowerCase()}
     loadPrivateKey = (cwd, keyFlag) => {
       if (keyFlag !== void 0) {
         const file = resolve4(cwd, keyFlag);
-        if (!existsSync6(file)) {
+        if (!existsSync8(file)) {
           throw new ConfigError(`\u627E\u4E0D\u5230\u79C1\u9470\u6A94\uFF1A${file}`);
         }
-        return readFileSync7(file, "utf8");
+        return readFileSync9(file, "utf8");
       }
       const fromEnv = process.env[SIGNING_KEY_ENV];
       if (fromEnv !== void 0 && fromEnv.trim() !== "") {
@@ -2723,10 +3067,10 @@ ${sha256Hex.toLowerCase()}
         throw new ConfigError(USAGE);
       }
       const zipFile = resolve4(cwd, args.positional[0]);
-      if (!existsSync6(zipFile)) {
+      if (!existsSync8(zipFile)) {
         throw new ConfigError(`\u627E\u4E0D\u5230\u7DB2\u9801\u5305\uFF1A${zipFile}`);
       }
-      const result = signBundle(new Uint8Array(readFileSync7(zipFile)), loadPrivateKey(cwd, args.flags.key));
+      const result = signBundle(new Uint8Array(readFileSync9(zipFile)), loadPrivateKey(cwd, args.flags.key));
       const fields = { version: result.version, sha256: result.sha256, signature: result.signature, size: result.size };
       if (args.printJson) {
         console.log(JSON.stringify(fields));
@@ -2750,175 +3094,9 @@ ${sha256Hex.toLowerCase()}
   }
 });
 
-// src/plugins.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join8, relative as relative2 } from "node:path";
-var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, importOf, pluginFileName, pluginFactoryName, renderPluginFile, renderPluginsDart, pluginsDir, pluginFilePath, scaffoldPluginFiles, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
-var init_plugins = __esm({
-  "src/plugins.ts"() {
-    "use strict";
-    init_config();
-    PLUGIN_DESCRIPTOR_FILE = "aqutter-plugin.json";
-    PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
-    PUBSPEC_BEGIN = "  # aqutter-plugins:begin\uFF08\u7531 `aqutter plugin` \u7DAD\u8B77\uFF0C\u8ACB\u52FF\u624B\u6539\uFF09";
-    PUBSPEC_END = "  # aqutter-plugins:end";
-    PLUGINS_DART_FILE = "aqutter_plugins.dart";
-    DART_PACKAGE_PATTERN = /^[a-z][a-z0-9_]*$/;
-    DART_CLASS_PATTERN = /^[A-Z][A-Za-z0-9_]*$/;
-    parseDescriptor = (raw, source) => {
-      const fail11 = (reason) => {
-        throw new Error(`${source} \u4E0D\u5408\u6CD5\uFF1A${reason}`);
-      };
-      if (typeof raw !== "object" || raw === null) {
-        return fail11("\u5FC5\u9808\u662F JSON \u7269\u4EF6");
-      }
-      const value = raw;
-      if (value.schema !== 1) {
-        fail11("schema \u5FC5\u9808\u70BA 1");
-      }
-      if (typeof value.id !== "string" || !PLUGIN_ID_PATTERN.test(value.id)) {
-        fail11(`id \u5FC5\u9808\u7B26\u5408 ${PLUGIN_ID_PATTERN}`);
-      }
-      const dart = value.dart;
-      if (typeof dart !== "object" || dart === null) {
-        return fail11("\u7F3A\u5C11 dart \u5340\u584A");
-      }
-      if (typeof dart.package !== "string" || !DART_PACKAGE_PATTERN.test(dart.package)) {
-        fail11("dart.package \u5FC5\u9808\u662F Dart \u5957\u4EF6\u540D\uFF08\u5C0F\u5BEB snake_case\uFF09");
-      }
-      if (typeof dart.class !== "string" || !DART_CLASS_PATTERN.test(dart.class)) {
-        fail11("dart.class \u5FC5\u9808\u662F Dart \u985E\u5225\u540D");
-      }
-      if (dart.import !== void 0 && typeof dart.import !== "string") {
-        fail11("dart.import \u5FC5\u9808\u662F\u5B57\u4E32");
-      }
-      return {
-        schema: 1,
-        id: value.id,
-        dart: {
-          package: dart.package,
-          class: dart.class,
-          ...dart.import === void 0 ? {} : { import: dart.import }
-        }
-      };
-    };
-    importOf = (entry) => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`;
-    pluginFileName = (id) => `${id.replace(/-/g, "_")}_plugin.dart`;
-    pluginFactoryName = (dartClass) => `build${dartClass}`;
-    renderPluginFile = (entry) => {
-      return [
-        "import 'dart:async';",
-        "",
-        "import 'package:aqutter/aqutter.dart';",
-        `import '${importOf(entry)}';`,
-        "",
-        "/// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u88E1\uFF1Baqutter CLI \u4E4B\u5F8C\u4E0D\u6703\u8986\u84CB\u9019\u500B\u6A94\u6848\u3002",
-        `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
-        ""
-      ].join("\n");
-    };
-    renderPluginsDart = (plugins) => {
-      const imports = plugins.map((entry) => `plugins/${pluginFileName(entry.id)}`).sort();
-      const lines = [
-        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\uFF0C",
-        "// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u8ACB\u6539 lib/plugins/ \u5167\u5404 plugin \u7684\u6A94\u6848\u3002",
-        "import 'package:aqutter/aqutter.dart';",
-        ...imports.map((path) => `import '${path}';`),
-        "",
-        "/// \u50B3\u7D66 `runAqutter(plugins: aqutterPlugins)`\u3002",
-        plugins.length === 0 ? "final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];" : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[
-${plugins.map((entry) => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join("\n")}
-];`,
-        ""
-      ];
-      return lines.join("\n");
-    };
-    pluginsDir = (project) => join8(project.appDir, "lib", "plugins");
-    pluginFilePath = (project, id) => join8(pluginsDir(project), pluginFileName(id));
-    scaffoldPluginFiles = (project, plugins) => {
-      const missing = [];
-      for (const entry of plugins) {
-        const file = pluginFilePath(project, entry.id);
-        if (!existsSync7(file)) {
-          missing.push(entry);
-          continue;
-        }
-        const factory = pluginFactoryName(entry.dart.class);
-        if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync8(file, "utf8"))) {
-          throw new Error(`${file} \u5DF2\u5B58\u5728\u4F46\u6C92\u6709\u9810\u671F\u7684\u51FD\u5F0F ${factory}\uFF1B\u8ACB\u88DC\u4E0A ${factory}(AqutterBootContext context)\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u5F8C\u91CD\u65B0\u57F7\u884C aqutter plugin sync\u3002`);
-        }
-      }
-      return missing.map((entry) => {
-        const file = pluginFilePath(project, entry.id);
-        mkdirSync6(pluginsDir(project), { recursive: true });
-        writeFileSync5(file, renderPluginFile(entry));
-        return file;
-      });
-    };
-    renderPubspecBlock = (plugins, projectRoot, appDir) => {
-      return plugins.flatMap((entry) => {
-        const path = relative2(appDir, join8(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
-        return [`  ${entry.dart.package}:`, `    path: ${path}`];
-      });
-    };
-    applyPubspecBlock = (pubspec, block) => {
-      const begin = pubspec.indexOf(PUBSPEC_BEGIN);
-      const end = pubspec.indexOf(PUBSPEC_END);
-      if (begin === -1 || end === -1 || end < begin) {
-        throw new Error(`pubspec.yaml \u7F3A\u5C11 plugin \u53D7\u7BA1\u5340\u584A\u6A19\u8A18\uFF08${PUBSPEC_BEGIN.trim()} \u2026 ${PUBSPEC_END.trim()}\uFF09\uFF0C\u8ACB\u5728 dependencies: \u5167\u88DC\u4E0A\u9019\u5169\u884C\u3002`);
-      }
-      const middle = block.length === 0 ? "" : `${block.join("\n")}
-`;
-      return `${pubspec.slice(0, begin)}${PUBSPEC_BEGIN}
-${middle}${pubspec.slice(end)}`;
-    };
-    syncPlugins = (project) => {
-      const plugins = project.config.plugins;
-      const pubspecPath = join8(project.appDir, "pubspec.yaml");
-      const original = readFileSync8(pubspecPath, "utf8");
-      const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
-      const created = scaffoldPluginFiles(project, plugins);
-      if (next !== original) {
-        writeFileSync5(pubspecPath, next);
-      }
-      writeFileSync5(join8(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
-      return created;
-    };
-    updateConfigPlugins = (project, update) => {
-      const previous = project.config.plugins;
-      const next = update([...previous]);
-      project.config.plugins = next;
-      let created;
-      try {
-        created = syncPlugins(project);
-      } catch (error) {
-        project.config.plugins = previous;
-        throw error;
-      }
-      const file = join8(project.root, CONFIG_FILE);
-      const raw = JSON.parse(readFileSync8(file, "utf8"));
-      if (next.length === 0) {
-        delete raw.plugins;
-      } else {
-        raw.plugins = next;
-      }
-      writeFileSync5(file, `${JSON.stringify(raw, null, 2)}
-`);
-      return created;
-    };
-    readInstalledDescriptor = (projectRoot, npmName) => {
-      const file = join8(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
-      if (!existsSync7(file)) {
-        throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
-      }
-      return parseDescriptor(JSON.parse(readFileSync8(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
-    };
-  }
-});
-
 // src/web.ts
-import { existsSync as existsSync8, readFileSync as readFileSync9 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync9, readFileSync as readFileSync10 } from "node:fs";
+import { join as join10 } from "node:path";
 var parseEnvFile, detectPackageManager, EXEC_PREFIX, execPrefixOf, execPrefix, installCommandOf, addArgs, withExec, envFromFile, shellInvocation, fill, nuxtAdapter, viteAdapter, nextAdapter, commandDev, commandGenerate, createWebAdapter;
 var init_web = __esm({
   "src/web.ts"() {
@@ -2927,7 +3105,7 @@ var init_web = __esm({
     init_shared();
     parseEnvFile = (path) => {
       const result = {};
-      for (const rawLine of readFileSync9(path, "utf8").split(/\r?\n/)) {
+      for (const rawLine of readFileSync10(path, "utf8").split(/\r?\n/)) {
         const line = rawLine.trim();
         if (line === "" || line.startsWith("#")) {
           continue;
@@ -2948,13 +3126,13 @@ var init_web = __esm({
       return result;
     };
     detectPackageManager = (root) => {
-      if (existsSync8(join9(root, "pnpm-lock.yaml"))) {
+      if (existsSync9(join10(root, "pnpm-lock.yaml"))) {
         return "pnpm";
       }
-      if (existsSync8(join9(root, "yarn.lock"))) {
+      if (existsSync9(join10(root, "yarn.lock"))) {
         return "yarn";
       }
-      if (existsSync8(join9(root, "bun.lock")) || existsSync8(join9(root, "bun.lockb"))) {
+      if (existsSync9(join10(root, "bun.lock")) || existsSync9(join10(root, "bun.lockb"))) {
         return "bun";
       }
       return "npm";
@@ -2973,7 +3151,7 @@ var init_web = __esm({
       const prefix = execPrefix(project);
       return { command: prefix.command, args: [...prefix.args, bin, ...args], env };
     };
-    envFromFile = (project, envFile) => parseEnvFile(join9(project.root, envFile));
+    envFromFile = (project, envFile) => parseEnvFile(join10(project.root, envFile));
     shellInvocation = (command) => {
       return IS_WIN ? { command: "cmd", args: ["/c", command] } : { command: "sh", args: ["-c", command] };
     };
@@ -3076,13 +3254,14 @@ __export(plugin_exports, {
   toSnake: () => toSnake
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync9, readFileSync as readFileSync10, rmSync, writeFileSync as writeFileSync6 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join10, relative as relative3, resolve as resolve5 } from "node:path";
-var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, reportCreated, remove, runPlugin;
+import { existsSync as existsSync10, readFileSync as readFileSync11, rmSync, writeFileSync as writeFileSync6 } from "node:fs";
+import { isAbsolute as isAbsolute3, join as join11, relative as relative3, resolve as resolve5 } from "node:path";
+var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, reportNativeGaps, reportCreated, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
     "use strict";
     init_config();
+    init_native();
     init_shared();
     init_template();
     init_plugins();
@@ -3106,11 +3285,11 @@ var init_plugin = __esm({
       }
     };
     readDependencySpecs = (root) => {
-      const file = join10(root, "package.json");
-      if (!existsSync9(file)) {
+      const file = join11(root, "package.json");
+      if (!existsSync10(file)) {
         return /* @__PURE__ */ new Map();
       }
-      const json = JSON.parse(readFileSync10(file, "utf8"));
+      const json = JSON.parse(readFileSync11(file, "utf8"));
       return new Map(Object.entries({ ...json.devDependencies, ...json.dependencies }));
     };
     pickInstalledName = (before, after, source) => {
@@ -3136,7 +3315,7 @@ var init_plugin = __esm({
       }
       const dirName = flags.dir ?? `aqutter-plugin-${id}`;
       const target = resolve5(cwd, dirName);
-      if (existsSync9(target)) {
+      if (existsSync10(target)) {
         return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
       }
       let refs;
@@ -3159,12 +3338,12 @@ var init_plugin = __esm({
         shellRef: refs.shellRef,
         clientRef: refs.clientRef
       };
-      const { written } = renderTree(join10(findTemplateRoot(), "plugin"), target, variables);
+      const { written } = renderTree(join11(findTemplateRoot(), "plugin"), target, variables);
       if (flags["shell-path"]) {
         const shellFlag = flags["shell-path"];
         const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve5(cwd, shellFlag)).split("\\").join("/");
-        const pubspec = join10(target, "pubspec.yaml");
-        writeFileSync6(pubspec, usePathDependency(readFileSync10(pubspec, "utf8"), rel));
+        const pubspec = join11(target, "pubspec.yaml");
+        writeFileSync6(pubspec, usePathDependency(readFileSync11(pubspec, "utf8"), rel));
       }
       console.log(`[${TAG3}] \u5DF2\u5EFA\u7ACB ${dirName}/\uFF08${written.length} \u500B\u6A94\u6848\uFF09`);
       console.log("\n\u4E0B\u4E00\u6B65\uFF1A");
@@ -3172,7 +3351,11 @@ var init_plugin = __esm({
       console.log(`  \u4E4B\u5F8C\u5728 App \u5C08\u6848\uFF1Aaqutter plugin add file:../${dirName}`);
     };
     add = (cwd, argv) => {
-      const { positional } = parseArgs(argv.filter((arg) => arg !== "--no-install"));
+      const merged = [];
+      for (let index = 0; index < argv.length; index++) {
+        merged.push(argv[index] === "--features" && argv[index + 1] !== void 0 ? `--features=${argv[++index]}` : argv[index]);
+      }
+      const { positional, flags } = parseArgs(merged.filter((arg) => arg !== "--no-install"));
       const source = positional[0];
       if (!source) {
         return fail2("\u7528\u6CD5\uFF1Aaqutter plugin add <\u4F86\u6E90>\uFF08\u5957\u4EF6\u540D\u3001github:owner/repo \u6216 file:\u8DEF\u5F91\uFF09");
@@ -3180,7 +3363,7 @@ var init_plugin = __esm({
       const project = loadProject(cwd);
       const pm = detectPackageManager(project.root);
       const before = readDependencySpecs(project.root);
-      const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync9(join10(project.root, "node_modules", name, "aqutter-plugin.json")));
+      const alreadyInstalled = [...before].some(([name, spec]) => spec === source && existsSync10(join11(project.root, "node_modules", name, "aqutter-plugin.json")));
       if (!argv.includes("--no-install") && !alreadyInstalled) {
         runPm(pm, addArgs(pm, source), project.root);
       }
@@ -3193,12 +3376,36 @@ var init_plugin = __esm({
       if (project.config.plugins.some((entry) => entry.id === descriptor.id && entry.npm !== npmName)) {
         return fail2(`plugin id\u300C${descriptor.id}\u300D\u5DF2\u88AB\u53E6\u4E00\u500B\u5957\u4EF6\u4F7F\u7528\u3002`);
       }
+      let features;
+      try {
+        features = flags.features === void 0 ? void 0 : selectFeatures(descriptor, flags.features.split(",").map((name) => name.trim()).filter(Boolean));
+      } catch (error) {
+        return fail2(error.message);
+      }
       const created = updateConfigPlugins(project, (plugins) => [
         ...plugins.filter((entry) => entry.id !== descriptor.id),
-        { id: descriptor.id, npm: npmName, dart: descriptor.dart }
+        { id: descriptor.id, npm: npmName, dart: descriptor.dart, ...features === void 0 ? {} : { features } }
       ].sort((a, b) => a.id.localeCompare(b.id)));
       console.log(`[${TAG3}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
       reportCreated(project, created);
+      reportNativeGaps(project, descriptor, features);
+    };
+    reportNativeGaps = (project, descriptor, features) => {
+      if (descriptor.native === void 0) {
+        return;
+      }
+      const requirements = collectRequirements(descriptor, selectFeatures(descriptor, features));
+      const gaps = findNativeGaps(project, requirements);
+      if (gaps.length === 0 && requirements.notes.length === 0) {
+        return;
+      }
+      console.log(`[${TAG3}] \u300C${descriptor.id}\u300D\u9700\u8981\u4F60\u5728\u539F\u751F\u5C08\u6848\u88DC\u7684\u8A2D\u5B9A\uFF08CLI \u4E0D\u6703\u66FF\u4F60\u6539\uFF09\uFF1A`);
+      for (const gap of gaps) {
+        console.log(`  - ${gap.text}`);
+      }
+      for (const note of requirements.notes) {
+        console.log(`  - ${note}`);
+      }
     };
     reportCreated = (project, created) => {
       for (const file of created) {
@@ -3222,7 +3429,7 @@ var init_plugin = __esm({
       runPm(pm, ["remove", entry.npm], project.root);
       console.log(`[${TAG3}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
       const file = pluginFilePath(project, id);
-      if (!existsSync9(file)) {
+      if (!existsSync10(file)) {
         return;
       }
       const shown = relative3(project.root, file).split("\\").join("/");
@@ -3264,8 +3471,8 @@ var init_plugin = __esm({
 });
 
 // src/environments.ts
-import { existsSync as existsSync10 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync11 } from "node:fs";
+import { join as join12 } from "node:path";
 var normalize, defaultEnvFileOf, envFileOf, fromConfig, listConfigured, resolveEnvironment;
 var init_environments = __esm({
   "src/environments.ts"() {
@@ -3295,7 +3502,7 @@ var init_environments = __esm({
       const configured = Object.hasOwn(environments, value) ? environments[value] : void 0;
       if (configured) {
         const envFile2 = envFileOf(project, value, configured);
-        if (!existsSync10(join11(project.root, envFile2))) {
+        if (!existsSync11(join12(project.root, envFile2))) {
           return {
             ok: false,
             error: `\u74B0\u5883\u300C${value}\u300D\u7684 env \u6A94 \`${envFile2}\` \u4E0D\u5B58\u5728\u3002\u8ACB\u7531 ${project.config.envDir}/.env.example \u8907\u88FD\u4E00\u4EFD\uFF0C\u6216\u4FEE\u6B63 aqutter.config.json \u7684 environments.${value}.envFile\u3002`
@@ -3315,7 +3522,7 @@ var init_environments = __esm({
         };
       }
       const dir = project.config.envDir;
-      const conventional = ENVIRONMENT_NAME.test(value) && existsSync10(join11(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
+      const conventional = ENVIRONMENT_NAME.test(value) && existsSync11(join12(project.root, `${dir}/.env.${value}`)) ? `${dir}/.env.${value}` : null;
       const hint = conventional ? `\u5075\u6E2C\u5230 \`${conventional}\` \u5B58\u5728\uFF0C\u4F46\u300C${value}\u300D\u4E0D\u5728\u8A2D\u5B9A\u6A94\u88E1\uFF1A\u7528 \`aqutter env add ${value}\` \u767B\u8A18\u5B83\uFF0C\u6216\u6539\u7528 -e ${conventional}\u3002` : `\u4E5F\u53EF\u4EE5\u7D66\u76F8\u5C0D\u5C08\u6848\u6839\u7684 env \u6A94\u8DEF\u5F91\uFF08\u4F8B\u5982 ${dir}/.env.uat\uFF09\u3002`;
       return { ok: false, error: `\u627E\u4E0D\u5230\u74B0\u5883\u6216 env \u6A94\u300C${value}\u300D\u3002${listConfigured(project)}${hint}` };
     };
@@ -3323,9 +3530,9 @@ var init_environments = __esm({
 });
 
 // src/menu.ts
-import { existsSync as existsSync11, readFileSync as readFileSync11, readdirSync as readdirSync3 } from "node:fs";
-import { join as join12 } from "node:path";
-var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists2, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
+import { existsSync as existsSync12, readFileSync as readFileSync12, readdirSync as readdirSync3 } from "node:fs";
+import { join as join13 } from "node:path";
+var ENV_PREFIX, SIGNING_FILE, EXAMPLE_MARK, isExample, SIGNING_PLATFORMS, envPathOf, signingPathOf, listDir, listEnvFiles, readIfExists3, listFlavors, listSigningConfigs, resolveXEnv, printOptions, chooseOne, chooseMany;
 var init_menu = __esm({
   "src/menu.ts"() {
     "use strict";
@@ -3336,14 +3543,14 @@ var init_menu = __esm({
     SIGNING_PLATFORMS = ["ios", "macos", "windows"];
     envPathOf = (project, name) => `${project.config.envDir}/${ENV_PREFIX}${name}`;
     signingPathOf = (name) => `signing/signing.${name}.json`;
-    listDir = (dir) => existsSync11(dir) ? readdirSync3(dir) : [];
+    listDir = (dir) => existsSync12(dir) ? readdirSync3(dir) : [];
     listEnvFiles = (project) => {
-      return listDir(join12(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
+      return listDir(join13(project.root, project.config.envDir)).filter((name) => name.startsWith(ENV_PREFIX) && !isExample(name)).sort().map((name) => ({
         path: `${project.config.envDir}/${name}`,
         name: name.slice(ENV_PREFIX.length)
       }));
     };
-    readIfExists2 = (path) => existsSync11(path) ? readFileSync11(path, "utf8") : "";
+    readIfExists3 = (path) => existsSync12(path) ? readFileSync12(path, "utf8") : "";
     listFlavors = (project) => {
       const found = /* @__PURE__ */ new Map();
       const add2 = (name, platform) => {
@@ -3351,12 +3558,12 @@ var init_menu = __esm({
         platforms.add(platform);
         found.set(name, platforms);
       };
-      const gradle = readIfExists2(join12(project.appDir, "android", "app", "build.gradle.kts"));
+      const gradle = readIfExists3(join13(project.appDir, "android", "app", "build.gradle.kts"));
       for (const match of gradle.matchAll(/create\("([a-z][a-z0-9]*)"\)/g)) {
         add2(match[1], "android");
       }
       for (const platform of ["ios", "macos"]) {
-        const pbxproj = readIfExists2(join12(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
+        const pbxproj = readIfExists3(join13(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"));
         for (const match of pbxproj.matchAll(/name = "Release-([a-z][a-z0-9]*)";/g)) {
           add2(match[1], platform);
         }
@@ -3367,11 +3574,11 @@ var init_menu = __esm({
       }));
     };
     listSigningConfigs = (project) => {
-      const dir = join12(project.appDir, "signing");
+      const dir = join13(project.appDir, "signing");
       return listDir(dir).filter((name) => SIGNING_FILE.test(name) && !isExample(name)).sort().map((name) => {
         let platforms = [];
         try {
-          platforms = Object.keys(JSON.parse(readFileSync11(join12(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
+          platforms = Object.keys(JSON.parse(readFileSync12(join13(dir, name), "utf8"))).filter((key) => SIGNING_PLATFORMS.includes(key));
         } catch {
         }
         return {
@@ -3402,7 +3609,7 @@ var init_menu = __esm({
       let signingPath = flags.signing ?? null;
       if (withSigning && signingPath === null && xEnv) {
         const candidate = signingPathOf(xEnv);
-        if (existsSync11(join12(project.appDir, candidate))) {
+        if (existsSync12(join13(project.appDir, candidate))) {
           signingPath = candidate;
         } else {
           console.log(`[${tag}] --x-env=${xEnv}\uFF1A\u627E\u4E0D\u5230 ${candidate}\uFF0C\u4E0D\u5E36 --signing\u3002`);
@@ -3460,9 +3667,9 @@ __export(dev_exports, {
   runDev: () => runDev
 });
 import { spawn, spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync12 } from "node:fs";
+import { existsSync as existsSync13 } from "node:fs";
 import { networkInterfaces } from "node:os";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 var TAG4, DEV_SERVER_WAIT_MS, fail3, sleep, isIos, isAndroid, DESKTOP_PLATFORMS, isDesktop, deviceKind, findAdb, lanIp, DESKTOP_TARGETS, runDev;
 var init_dev = __esm({
   "src/commands/dev.ts"() {
@@ -3496,10 +3703,10 @@ var init_dev = __esm({
     };
     findAdb = () => {
       const candidates = [
-        join13(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
-        join13(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
+        join14(process.env.HOME ?? "", "Library/Android/sdk/platform-tools/adb"),
+        join14(process.env.HOME ?? "", "Android/Sdk/platform-tools/adb")
       ];
-      return candidates.find((path) => existsSync12(path)) ?? "adb";
+      return candidates.find((path) => existsSync13(path)) ?? "adb";
     };
     lanIp = () => {
       for (const infos of Object.values(networkInterfaces())) {
@@ -3899,7 +4106,7 @@ var init_dev = __esm({
         "-d",
         resolved.deviceId,
         "--dart-define-from-file",
-        join13(project.root, envFile),
+        join14(project.root, envFile),
         "--dart-define",
         `AQUTTER_DEV_URL=${devUrl}`
       ];
@@ -3915,8 +4122,8 @@ var init_dev = __esm({
 });
 
 // src/syncSeed.ts
-import { readFileSync as readFileSync12, writeFileSync as writeFileSync7 } from "node:fs";
-import { join as join14, relative as relative4 } from "node:path";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join15, relative as relative4 } from "node:path";
 var VERSION_ENTRY2, FONT_EXTENSIONS, assertNoFonts, buildVersion, packSeed;
 var init_syncSeed = __esm({
   "src/syncSeed.ts"() {
@@ -3947,7 +4154,7 @@ var init_syncSeed = __esm({
       ].join("");
     };
     packSeed = (project, sourceRelative) => {
-      const sourceDir = join14(project.root, sourceRelative);
+      const sourceDir = join15(project.root, sourceRelative);
       const files = collectFiles(sourceDir);
       if (files.length === 0) {
         throw new Error(`[syncSeed] \u627E\u4E0D\u5230\u7522\u7269\uFF0C\u8ACB\u5148\u7522\u751F\u975C\u614B\u7DB2\u9801\uFF08${sourceDir} \u70BA\u7A7A\uFF09`);
@@ -3955,7 +4162,7 @@ var init_syncSeed = __esm({
       const zipEntries = {};
       for (const file of files) {
         const name = relative4(sourceDir, file).split("\\").join("/");
-        zipEntries[name] = new Uint8Array(readFileSync12(file));
+        zipEntries[name] = new Uint8Array(readFileSync13(file));
       }
       assertNoFonts(Object.keys(zipEntries));
       const version = buildVersion();
@@ -3977,8 +4184,8 @@ __export(seed_exports, {
   runSeed: () => runSeed
 });
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync7, readFileSync as readFileSync13, rmSync as rmSync2 } from "node:fs";
-import { join as join15, relative as relative5 } from "node:path";
+import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync7, readFileSync as readFileSync14, rmSync as rmSync2 } from "node:fs";
+import { join as join16, relative as relative5 } from "node:path";
 var TAG5, WEB_ARTIFACT_NAME, fail4, runSeed;
 var init_seed = __esm({
   "src/commands/seed.ts"() {
@@ -4012,7 +4219,7 @@ var init_seed = __esm({
         console.log(`[${TAG5}] clean: ${web.cleanDirs.join(" / ")}\uFF08\u907F\u514D\u6CBF\u7528\u524D\u4E00\u4EFD env \u7684\u8A2D\u5B9A\u503C\uFF09`);
       }
       for (const dir of web.cleanDirs) {
-        rmSync2(join15(project.root, dir), {
+        rmSync2(join16(project.root, dir), {
           recursive: true,
           force: true
         });
@@ -4034,9 +4241,9 @@ var init_seed = __esm({
       }
       console.log(`[${TAG5}] pack seed`);
       packSeed(project, web.outputDir);
-      const { version } = JSON.parse(readFileSync13(project.seedVersion, "utf8"));
+      const { version } = JSON.parse(readFileSync14(project.seedVersion, "utf8"));
       mkdirSync7(project.artifactsDir, { recursive: true });
-      const artifact = join15(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
+      const artifact = join16(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
       copyFileSync2(project.seedBundle, artifact);
       console.log(`[${TAG5}] \u5B8C\u6210\uFF08env=${envFile}\uFF09\u2192 ${relative5(project.root, artifact)}`);
     };
@@ -4044,8 +4251,8 @@ var init_seed = __esm({
 });
 
 // src/signing.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync8, readFileSync as readFileSync14, readdirSync as readdirSync4, writeFileSync as writeFileSync8 } from "node:fs";
-import { join as join16 } from "node:path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync8, readFileSync as readFileSync15, readdirSync as readdirSync4, writeFileSync as writeFileSync8 } from "node:fs";
+import { join as join17 } from "node:path";
 function signingSectionOf(config, signingPath, platformKey) {
   const section = config[platformKey];
   if (!section || typeof section !== "object") {
@@ -4078,21 +4285,21 @@ var init_signing = __esm({
     };
     DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com";
     iosPaths = (project) => {
-      const buildDir = join16(project.appDir, "build", "ios");
+      const buildDir = join17(project.appDir, "build", "ios");
       return {
         buildDir,
-        archive: join16(buildDir, "archive", "Runner.xcarchive"),
-        exportDir: join16(buildDir, "ipa"),
-        exportOptions: join16(buildDir, "ExportOptions.plist")
+        archive: join17(buildDir, "archive", "Runner.xcarchive"),
+        exportDir: join17(buildDir, "ipa"),
+        exportOptions: join17(buildDir, "ExportOptions.plist")
       };
     };
     readSigningConfig = (project, signingPath) => {
-      const file = join16(project.appDir, signingPath);
-      if (!existsSync13(file)) {
+      const file = join17(project.appDir, signingPath);
+      if (!existsSync14(file)) {
         return fail5(`\u627E\u4E0D\u5230\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\`\uFF08\`--signing=\` \u5403\u7684\u662F\u76F8\u5C0D ${project.config.appDir}/ \u7684\u8DEF\u5F91\uFF0C\u7BC4\u672C\u898B ${project.config.appDir}/signing/signing.example.json\uFF09\u3002`);
       }
       try {
-        return JSON.parse(readFileSync14(file, "utf8"));
+        return JSON.parse(readFileSync15(file, "utf8"));
       } catch (error) {
         return fail5(`\u7C3D\u7AE0\u8A2D\u5B9A\u6A94 \`${signingPath}\` \u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${error.message}`);
       }
@@ -4137,7 +4344,7 @@ var init_signing = __esm({
       const configuration = flavor ? `Release-${flavor}` : "Release";
       step("xcodebuild archive", "xcodebuild", [
         "-workspace",
-        join16(project.appDir, "ios", "Runner.xcworkspace"),
+        join17(project.appDir, "ios", "Runner.xcworkspace"),
         "-scheme",
         scheme,
         "-configuration",
@@ -4152,7 +4359,7 @@ var init_signing = __esm({
       ], project.appDir);
       let exportOptions = paths.exportOptions;
       if (exportOptionsPath) {
-        exportOptions = join16(project.appDir, exportOptionsPath);
+        exportOptions = join17(project.appDir, exportOptionsPath);
       } else {
         mkdirSync8(paths.buildDir, { recursive: true });
         writeFileSync8(exportOptions, renderExportOptions(ios));
@@ -4176,7 +4383,7 @@ var init_signing = __esm({
         "runtime",
         "--timestamp",
         "--entitlements",
-        join16(project.appDir, "macos", "Runner", "Release.entitlements"),
+        join17(project.appDir, "macos", "Runner", "Release.entitlements"),
         "--sign",
         macos.identity,
         appPath
@@ -4200,7 +4407,7 @@ var init_signing = __esm({
         if (!password) {
           fail5("\u7C3D\u7AE0\u8A2D\u5B9A\u4F7F\u7528 pfx\uFF0C\u4F46 process env \u6C92\u6709 WIN_PFX_PASSWORD\u3002");
         }
-        certificateArgs.push("/f", join16(project.appDir, windows.pfx), "/p", password);
+        certificateArgs.push("/f", join17(project.appDir, windows.pfx), "/p", password);
       } else {
         certificateArgs.push("/sha1", windows.thumbprint);
       }
@@ -4215,7 +4422,7 @@ var init_signing = __esm({
           "/tr",
           windows.timestampUrl ?? DEFAULT_TIMESTAMP_URL,
           ...certificateArgs,
-          join16(releaseDir, name)
+          join17(releaseDir, name)
         ], project.appDir, secrets);
       }
     };
@@ -4234,8 +4441,8 @@ __export(build_exports, {
   locateProduct: () => locateProduct,
   runBuild: () => runBuild
 });
-import { copyFileSync as copyFileSync3, existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync9 } from "node:fs";
-import { basename as basename3, join as join17, relative as relative6 } from "node:path";
+import { copyFileSync as copyFileSync3, existsSync as existsSync15, mkdirSync as mkdirSync9, readFileSync as readFileSync16, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync9 } from "node:fs";
+import { basename as basename3, join as join18, relative as relative6 } from "node:path";
 var TAG7, FLUTTER_TARGET, fail6, BuildError, DESKTOP_ARCH, findSingle, locateProduct, artifactStem, ZIP_OS_UNIX, UNIX_MODE_SHIFT, UNIX_TYPE_FILE, UNIX_TYPE_SYMLINK, UNIX_PERMISSION_MASK, SYMLINK_PERMISSION, unixAttrs, zipEntryOf, zipDirectory, publishArtifact, step2, SIGNING_SECTION, HOST_PLATFORMS, PLATFORM_LABEL, buildOne, promptSelections, runBuild;
 var init_build = __esm({
   "src/commands/build.ts"() {
@@ -4268,68 +4475,68 @@ var init_build = __esm({
     };
     DESKTOP_ARCH = process.arch === "arm64" ? "arm64" : "x64";
     findSingle = (dir, extension) => {
-      if (!existsSync14(dir)) {
+      if (!existsSync15(dir)) {
         return null;
       }
       const matches = readdirSync5(dir).filter((entry) => entry.endsWith(extension));
-      return matches.length === 1 ? join17(dir, matches[0]) : null;
+      return matches.length === 1 ? join18(dir, matches[0]) : null;
     };
     locateProduct = (project, target, flavorName) => {
-      const buildDir = join17(project.appDir, "build");
+      const buildDir = join18(project.appDir, "build");
       switch (target) {
         case "apk": {
-          const file = join17(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
+          const file = join18(buildDir, "app", "outputs", "flutter-apk", flavorName ? `app-${flavorName}-release.apk` : "app-release.apk");
           return {
             kind: "file",
-            path: existsSync14(file) ? file : null,
+            path: existsSync15(file) ? file : null,
             expected: file
           };
         }
         case "aab": {
-          const file = flavorName ? join17(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join17(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
+          const file = flavorName ? join18(buildDir, "app", "outputs", "bundle", `${flavorName}Release`, `app-${flavorName}-release.aab`) : join18(buildDir, "app", "outputs", "bundle", "release", "app-release.aab");
           return {
             kind: "file",
-            path: existsSync14(file) ? file : null,
+            path: existsSync15(file) ? file : null,
             expected: file
           };
         }
         case "ipa": {
-          const dir = join17(buildDir, "ios", "ipa");
+          const dir = join18(buildDir, "ios", "ipa");
           return {
             kind: "file",
             path: findSingle(dir, ".ipa"),
-            expected: join17(dir, "*.ipa")
+            expected: join18(dir, "*.ipa")
           };
         }
         case "ios": {
-          const dir = join17(buildDir, "ios", "iphoneos", "Runner.app");
+          const dir = join18(buildDir, "ios", "iphoneos", "Runner.app");
           return {
             kind: "dir",
-            path: existsSync14(dir) ? dir : null,
+            path: existsSync15(dir) ? dir : null,
             expected: dir
           };
         }
         case "macos": {
-          const dir = join17(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
+          const dir = join18(buildDir, "macos", "Build", "Products", flavorName ? `Release-${flavorName}` : "Release");
           return {
             kind: "dir",
             path: findSingle(dir, ".app"),
-            expected: join17(dir, "*.app")
+            expected: join18(dir, "*.app")
           };
         }
         case "windows": {
-          const dir = join17(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
+          const dir = join18(buildDir, "windows", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "runner", "Release");
           return {
             kind: "dir",
-            path: existsSync14(dir) ? dir : null,
+            path: existsSync15(dir) ? dir : null,
             expected: dir
           };
         }
         case "linux": {
-          const dir = join17(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
+          const dir = join18(buildDir, "linux", DESKTOP_ARCH, ...flavorName ? [flavorName] : [], "release", "bundle");
           return {
             kind: "dir",
-            path: existsSync14(dir) ? dir : null,
+            path: existsSync15(dir) ? dir : null,
             expected: dir
           };
         }
@@ -4355,7 +4562,7 @@ var init_build = __esm({
     };
     zipEntryOf = (entry) => {
       if (IS_WIN) {
-        return new Uint8Array(readFileSync15(entry.path));
+        return new Uint8Array(readFileSync16(entry.path));
       }
       if (entry.kind === ENTRY_KIND.symlink) {
         return [
@@ -4368,7 +4575,7 @@ var init_build = __esm({
         ];
       }
       return [
-        new Uint8Array(readFileSync15(entry.path)),
+        new Uint8Array(readFileSync16(entry.path)),
         {
           os: ZIP_OS_UNIX,
           attrs: unixAttrs(UNIX_TYPE_FILE | entry.mode & UNIX_PERMISSION_MASK)
@@ -4392,11 +4599,11 @@ var init_build = __esm({
       mkdirSync9(project.artifactsDir, { recursive: true });
       const stem = artifactStem(project.config.artifactName, envName, flavorName, version);
       if (product.kind === "file") {
-        const destination2 = join17(project.artifactsDir, `${stem}.${target}`);
+        const destination2 = join18(project.artifactsDir, `${stem}.${target}`);
         copyFileSync3(product.path, destination2);
         return destination2;
       }
-      const destination = join17(project.artifactsDir, `${stem}_${target}.zip`);
+      const destination = join18(project.artifactsDir, `${stem}_${target}.zip`);
       zipDirectory(product.path, destination);
       return destination;
     };
@@ -4440,14 +4647,14 @@ var init_build = __esm({
       }
       const signedIpa = signing !== null && platform === "ipa";
       const buildTarget = signedIpa ? "ios" : FLUTTER_TARGET[platform];
-      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join17(project.root, envFile)}`];
+      const buildArgs = ["build", buildTarget, "--release", `--dart-define-from-file=${join18(project.root, envFile)}`];
       if (flavor) {
         buildArgs.push("--flavor", flavor);
       }
       if (signedIpa) {
         buildArgs.push("--no-codesign");
       } else if (exportOptions) {
-        buildArgs.push(`--export-options-plist=${join17(project.appDir, exportOptions)}`);
+        buildArgs.push(`--export-options-plist=${join18(project.appDir, exportOptions)}`);
       }
       step2(`flutter build ${buildTarget}`, "flutter", buildArgs, project.appDir);
       if (signedIpa) {
@@ -4677,8 +4884,8 @@ __export(upgrade_exports, {
   runUpgrade: () => runUpgrade
 });
 import { spawnSync as spawnSync6 } from "node:child_process";
-import { existsSync as existsSync15, readFileSync as readFileSync16, writeFileSync as writeFileSync10 } from "node:fs";
-import { join as join18 } from "node:path";
+import { existsSync as existsSync16, readFileSync as readFileSync17, writeFileSync as writeFileSync10 } from "node:fs";
+import { join as join19 } from "node:path";
 var TAG8, fail7, planUpgrade, runUpgrade;
 var init_upgrade = __esm({
   "src/commands/upgrade.ts"() {
@@ -4720,25 +4927,25 @@ var init_upgrade = __esm({
         projectConfig: project.config,
         requested: flags.to
       });
-      const pubspecFile = join18(project.appDir, "pubspec.yaml");
-      const fvmrcFile = join18(project.appDir, ".fvmrc");
-      const packageFile = join18(project.root, "package.json");
-      if (!existsSync15(pubspecFile)) {
+      const pubspecFile = join19(project.appDir, "pubspec.yaml");
+      const fvmrcFile = join19(project.appDir, ".fvmrc");
+      const packageFile = join19(project.root, "package.json");
+      if (!existsSync16(pubspecFile)) {
         return fail7(`\u627E\u4E0D\u5230 ${pubspecFile}\u3002\u8ACB\u78BA\u8A8D aqutter.config.json \u7684 appDir\u3002`);
       }
-      const originalPubspec = readFileSync16(pubspecFile, "utf8");
-      const originalPackage = existsSync15(packageFile) ? readFileSync16(packageFile, "utf8") : null;
+      const originalPubspec = readFileSync17(pubspecFile, "utf8");
+      const originalPackage = existsSync16(packageFile) ? readFileSync17(packageFile, "utf8") : null;
       const plan = planUpgrade(
         {
           pubspec: originalPubspec,
-          fvmrc: existsSync15(fvmrcFile) ? readFileSync16(fvmrcFile, "utf8") : null,
+          fvmrc: existsSync16(fvmrcFile) ? readFileSync17(fvmrcFile, "utf8") : null,
           packageJson: originalPackage,
           keepShellRef: project.config.shell.path !== void 0
         },
         expected
       );
       console.log(`[${TAG8}] \u5C0D\u9F4A\u5230\u6846\u67B6\u7248\u672C ${expected.version}\uFF08Flutter ${expected.flutterVersion}\u3001\u6BBC ${expected.shellRef.slice(0, 7)}\uFF1Bmanifest \u4F86\u6E90\uFF1A${source}\uFF09${dryRun ? "\uFF08dry-run\uFF0C\u4E0D\u5BEB\u6A94\uFF09" : ""}`);
-      const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync15(fvmrcFile) ? readFileSync16(fvmrcFile, "utf8") : null }, expected);
+      const downgrades = detectDowngrades({ pubspec: originalPubspec, fvmrc: existsSync16(fvmrcFile) ? readFileSync17(fvmrcFile, "utf8") : null }, expected);
       if (downgrades.length > 0) {
         const lines = downgrades.map((item) => `  ${item.what}\uFF1A${item.from} \u2192 ${item.to}`);
         if (!allowDowngrade) {
@@ -4814,8 +5021,8 @@ __export(env_exports, {
   removeEnvironment: () => removeEnvironment,
   runEnv: () => runEnv
 });
-import { copyFileSync as copyFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync10, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
-import { dirname as dirname3, join as join19 } from "node:path";
+import { copyFileSync as copyFileSync4, existsSync as existsSync17, mkdirSync as mkdirSync10, readFileSync as readFileSync18, writeFileSync as writeFileSync11 } from "node:fs";
+import { dirname as dirname3, join as join20 } from "node:path";
 var TAG9, readRawConfig, writeRawConfig, isEmptyObject, addEnvironment, removeEnvironment, describeWeb, listEnvironments, fail8, USAGE2, runEnv;
 var init_env = __esm({
   "src/commands/env.ts"() {
@@ -4826,10 +5033,10 @@ var init_env = __esm({
     init_shared();
     TAG9 = "env";
     readRawConfig = (project) => {
-      return JSON.parse(readFileSync17(join19(project.root, CONFIG_FILE), "utf8"));
+      return JSON.parse(readFileSync18(join20(project.root, CONFIG_FILE), "utf8"));
     };
     writeRawConfig = (project, raw) => {
-      writeFileSync11(join19(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
+      writeFileSync11(join20(project.root, CONFIG_FILE), `${JSON.stringify(raw, null, 2)}
 `);
     };
     isEmptyObject = (value) => Object.keys(value).length === 0;
@@ -4842,8 +5049,8 @@ var init_env = __esm({
         throw new ConfigError(`\u74B0\u5883\u300C${name}\u300D\u5DF2\u5B58\u5728\u65BC ${CONFIG_FILE}\u3002\u8981\u4FEE\u6539\u8ACB\u76F4\u63A5\u7DE8\u8F2F\u8A2D\u5B9A\u6A94\uFF1B\u4E0D\u6703\u8986\u5BEB\u3002`);
       }
       const envFile = options.envFile ?? defaultEnvFileOf(project, name);
-      const target = join19(project.root, envFile);
-      const createdEnvFile = !existsSync16(target);
+      const target = join20(project.root, envFile);
+      const createdEnvFile = !existsSync17(target);
       if (createdEnvFile) {
         let source;
         if (options.from !== void 0) {
@@ -4851,12 +5058,12 @@ var init_env = __esm({
           if (!resolved.ok) {
             throw new ConfigError(`--from \u89E3\u6790\u5931\u6557\uFF1A${resolved.error}`);
           }
-          source = join19(project.root, resolved.value.envFile);
+          source = join20(project.root, resolved.value.envFile);
         } else {
-          source = join19(project.root, project.config.envDir, ".env.example");
+          source = join20(project.root, project.config.envDir, ".env.example");
         }
         mkdirSync10(dirname3(target), { recursive: true });
-        if (existsSync16(source)) {
+        if (existsSync17(source)) {
           copyFileSync4(source, target);
         } else if (options.from !== void 0) {
           throw new ConfigError(`--from \u7684\u4F86\u6E90 \`${source}\` \u4E0D\u5B58\u5728\u3002`);
@@ -4919,7 +5126,7 @@ var init_env = __esm({
       for (const [name, environment] of Object.entries(project.config.environments)) {
         const envFile = environment.envFile ?? defaultEnvFileOf(project, name);
         lines.push(
-          `${name}  env=${envFile}${existsSync16(join19(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
+          `${name}  env=${envFile}${existsSync17(join20(project.root, envFile)) ? "" : "\uFF08\u6A94\u6848\u4E0D\u5B58\u5728\uFF09"}  flavor=${environment.flavor ?? "-"}  signing=${environment.signing ?? "-"}  web\u8986\u84CB=${describeWeb(environment.web)}`
         );
       }
       return lines;
@@ -5017,8 +5224,8 @@ __export(flavorAdd_exports, {
   wireDisplayName: () => wireDisplayName
 });
 import { randomBytes } from "node:crypto";
-import { existsSync as existsSync17, readFileSync as readFileSync18, writeFileSync as writeFileSync12 } from "node:fs";
-import { join as join20, relative as relative7 } from "node:path";
+import { existsSync as existsSync18, readFileSync as readFileSync19, writeFileSync as writeFileSync12 } from "node:fs";
+import { join as join21, relative as relative7 } from "node:path";
 var TAG10, FlavorAddError, fail9, FLAVOR_NAME_PATTERN, XCODE_MODES, GRADLE_DIMENSION, ANDROID_LABEL_RESOURCE, PBX_ID_BYTES, PBX_INDENT, BUILD_SETTING_INDENT, PLIST_INDENT, GRADLE_FILE_LABEL, kotlinEscape, pbxEscape, readAndroidApplicationId, readAndroidLabel, wireAndroidLabel, renderGradleFlavor, addGradleFlavor, newPbxId, PBX_BARE_NAME, pbxName, listBuildConfigurations, readBuildSetting, setBuildSetting, runnerConfigurationIds, readXcodeIdentity, readPlistDisplayName, wireDisplayName, addXcodeConfigurations, renderXcodeScheme, PLATFORMS, createPaths, askFlavorName, runFlavorAdd;
 var init_flavorAdd = __esm({
   "src/commands/flavorAdd.ts"() {
@@ -5309,12 +5516,12 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
     };
     PLATFORMS = ["android", "ios", "macos"];
     createPaths = (project) => ({
-      androidGradle: join20(project.appDir, "android", "app", "build.gradle.kts"),
-      androidManifest: join20(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
-      xcodeProject: (platform) => join20(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
-      xcodeSchemeDir: (platform) => join20(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
-      infoPlist: (platform) => join20(project.appDir, platform, "Runner", "Info.plist"),
-      appInfoXcconfig: (platform) => join20(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
+      androidGradle: join21(project.appDir, "android", "app", "build.gradle.kts"),
+      androidManifest: join21(project.appDir, "android", "app", "src", "main", "AndroidManifest.xml"),
+      xcodeProject: (platform) => join21(project.appDir, platform, "Runner.xcodeproj", "project.pbxproj"),
+      xcodeSchemeDir: (platform) => join21(project.appDir, platform, "Runner.xcodeproj", "xcshareddata", "xcschemes"),
+      infoPlist: (platform) => join21(project.appDir, platform, "Runner", "Info.plist"),
+      appInfoXcconfig: (platform) => join21(project.appDir, platform, "Runner", "Configs", "AppInfo.xcconfig")
     });
     askFlavorName = async (initial, askWithDefault) => {
       let name = initial ?? "";
@@ -5334,16 +5541,16 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
       const appDirName = project.config.appDir;
       const rel = (path) => relative7(project.root, path);
       const readText = (path) => {
-        if (!existsSync17(path)) {
+        if (!existsSync18(path)) {
           throw new FlavorAddError(`\u627E\u4E0D\u5230 ${rel(path)}\u3002`);
         }
-        return readFileSync18(path, "utf8");
+        return readFileSync19(path, "utf8");
       };
       const readIdentity = (platform) => {
         const appInfo = paths.appInfoXcconfig(platform);
         return readXcodeIdentity(
           readText(paths.xcodeProject(platform)),
-          existsSync17(appInfo) ? readFileSync18(appInfo, "utf8") : null
+          existsSync18(appInfo) ? readFileSync19(appInfo, "utf8") : null
         );
       };
       const applyAndroid = (flavor) => {
@@ -5358,9 +5565,9 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
       };
       const writeXcodeScheme = (platform, flavor) => {
         const dir = paths.xcodeSchemeDir(platform);
-        const template = join20(dir, "Runner.xcscheme");
-        const target = join20(dir, `${flavor.name}.xcscheme`);
-        if (existsSync17(target)) {
+        const template = join21(dir, "Runner.xcscheme");
+        const target = join21(dir, `${flavor.name}.xcscheme`);
+        if (existsSync18(target)) {
           throw new FlavorAddError(`\u5DF2\u6709 scheme ${rel(target)}\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
         writeFileSync12(target, renderXcodeScheme(readText(template), flavor.name));
@@ -5373,7 +5580,7 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
         if (listBuildConfigurations(original).some((block) => block.name === `Release-${flavor.name}`)) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 configuration "Release-${flavor.name}"\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
-        if (existsSync17(join20(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
+        if (existsSync18(join21(paths.xcodeSchemeDir(platform), `${flavor.name}.xcscheme`))) {
           throw new FlavorAddError(`${platform} \u5DF2\u6709 scheme ${flavor.name}.xcscheme\uFF0C\u672A\u8B8A\u66F4\u4EFB\u4F55\u6A94\u6848\u3002`);
         }
         const wired = wireDisplayName(original, readText(plistPath), fallbackDisplayName);
@@ -5395,9 +5602,9 @@ ${PLIST_INDENT}<string>$(APP_DISPLAY_NAME)</string>`;
       try {
         const { positional } = parseArgs(argv);
         const available = {
-          android: existsSync17(paths.androidGradle),
-          ios: existsSync17(paths.xcodeProject("ios")),
-          macos: existsSync17(paths.xcodeProject("macos"))
+          android: existsSync18(paths.androidGradle),
+          ios: existsSync18(paths.xcodeProject("ios")),
+          macos: existsSync18(paths.xcodeProject("macos"))
         };
         if (!available.android && !available.ios && !available.macos) {
           throw new FlavorAddError(`${appDirName}/ \u5167\u6C92\u6709 android/\u3001ios/ \u6216 macos/ \u539F\u751F\u5C08\u6848\uFF0C\u7121\u4E8B\u53EF\u505A\u3002`);
@@ -5479,8 +5686,8 @@ __export(genJks_exports, {
   runGenJks: () => runGenJks
 });
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync18, unlinkSync, writeFileSync as writeFileSync13 } from "node:fs";
-import { join as join21, relative as relative8 } from "node:path";
+import { existsSync as existsSync19, unlinkSync, writeFileSync as writeFileSync13 } from "node:fs";
+import { join as join22, relative as relative8 } from "node:path";
 var TAG11, fail10, STORE_FILE_PREFIX_FROM_APP_MODULE, JKS_EXTENSION, DEFAULT_JKS_NAME, DEFAULT_ALIAS, DEFAULT_VALIDITY_YEARS, DEFAULT_LOCALITY, DEFAULT_COUNTRY, DAYS_PER_YEAR, MIN_PASSWORD_LENGTH, PASSWORD_ENV_KEY, KEY_ALGORITHM, KEY_SIZE, STORE_TYPE, KEYTOOL_BIN, keytoolCandidates, locateKeytool, isValidPassword, parseValidityYears, normalizeJksName, escapeDnValue, buildDistinguishedName, buildKeyProperties, buildKeytoolArgs, runGenJks;
 var init_genJks = __esm({
   "src/commands/genJks.ts"() {
@@ -5508,7 +5715,7 @@ var init_genJks = __esm({
     keytoolCandidates = (javaHome, keytoolBin = KEYTOOL_BIN) => {
       const candidates = [keytoolBin];
       if (javaHome) {
-        candidates.push(join21(javaHome, "bin", keytoolBin));
+        candidates.push(join22(javaHome, "bin", keytoolBin));
       }
       return candidates;
     };
@@ -5572,8 +5779,8 @@ var init_genJks = __esm({
     ];
     runGenJks = async (project, argv) => {
       void argv;
-      const androidDir = join21(project.appDir, "android");
-      const keyPropertiesFile = join21(androidDir, "key.properties");
+      const androidDir = join22(project.appDir, "android");
+      const keyPropertiesFile = join22(androidDir, "key.properties");
       const gitignoreLabel = `${project.config.appDir}/android/.gitignore`;
       const {
         askWithDefault,
@@ -5623,7 +5830,7 @@ var init_genJks = __esm({
         });
       };
       const ensureCanWrite = async (filePath, label) => {
-        if (!existsSync18(filePath)) {
+        if (!existsSync19(filePath)) {
           return;
         }
         const overwrite = await askYesNo(`${label} \u5DF2\u5B58\u5728\uFF08${relative8(project.root, filePath)}\uFF09\uFF0C\u662F\u5426\u8986\u5BEB\uFF1F`);
@@ -5656,7 +5863,7 @@ var init_genJks = __esm({
       const password = await askPassword();
       const validityYears = await askValidityYears();
       const distinguishedName = await askDistinguishedName();
-      const jksPath = join21(androidDir, jksName);
+      const jksPath = join22(androidDir, jksName);
       await ensureCanWrite(jksPath, "keystore");
       await ensureCanWrite(keyPropertiesFile, "key.properties");
       console.log(`

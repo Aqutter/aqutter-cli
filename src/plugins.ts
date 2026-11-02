@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { CONFIG_FILE } from './config.ts'
-import type { PluginDescriptor, PluginEntry, Project } from './config.ts'
+import type { NativeDeclaration, NativeFeature, PluginDescriptor, PluginEntry, Project } from './config.ts'
 
 export const PLUGIN_DESCRIPTOR_FILE = 'aqutter-plugin.json'
 
@@ -53,7 +53,79 @@ export const parseDescriptor = (raw: unknown, source: string): PluginDescriptor 
       class: dart.class as string,
       ...(dart.import === undefined ? {} : { import: dart.import as string }),
     },
+    ...(value.native === undefined ? {} : { native: parseNative(value.native, fail) }),
   }
+}
+
+const FEATURE_PATTERN = /^[a-z][a-z0-9-]*$/
+
+const parseInfoPlist = (raw: unknown, where: string, fail: (reason: string) => never): Record<string, string> | undefined => {
+  if (raw === undefined) {
+    return undefined
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return fail(`${where}.infoPlist 必須是物件`)
+  }
+  for (const [key, text] of Object.entries(raw)) {
+    if (typeof text !== 'string') {
+      fail(`${where}.infoPlist.${key} 必須是字串`)
+    }
+  }
+  return raw as Record<string, string>
+}
+
+/** 驗證 `native` 區塊；未知的子欄位忽略（契約 §5，日後擴充用）。 */
+const parseNative = (raw: unknown, fail: (reason: string) => never): NativeDeclaration => {
+  const features = (typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>).features : undefined) as Record<string, unknown> | undefined
+  if (typeof features !== 'object' || features === null || Array.isArray(features) || Object.keys(features).length === 0) {
+    return fail('native.features 必須是至少一個功能的物件')
+  }
+  const result: Record<string, NativeFeature> = {}
+  for (const [name, rawFeature] of Object.entries(features)) {
+    const where = `native.features.${name}`
+    if (!FEATURE_PATTERN.test(name)) {
+      fail(`功能名「${name}」必須符合 ${FEATURE_PATTERN}`)
+    }
+    if (typeof rawFeature !== 'object' || rawFeature === null) {
+      return fail(`${where} 必須是物件`)
+    }
+    const feature = rawFeature as Record<string, unknown>
+    const out: NativeFeature = {}
+    const android = feature.android as Record<string, unknown> | undefined
+    if (android !== undefined) {
+      const list = android.permissions ?? []
+      if (!Array.isArray(list)) {
+        return fail(`${where}.android.permissions 必須是陣列`)
+      }
+      out.android = {
+        permissions: list.map((item: unknown, index: number) => {
+          const entry = item as Record<string, unknown> | null
+          if (typeof entry !== 'object' || entry === null || typeof entry.name !== 'string' || !entry.name.includes('.')) {
+            return fail(`${where}.android.permissions[${index}].name 必須是完整的權限名稱`)
+          }
+          if (entry.maxSdkVersion !== undefined && !Number.isInteger(entry.maxSdkVersion)) {
+            fail(`${where}.android.permissions[${index}].maxSdkVersion 必須是整數`)
+          }
+          return { name: entry.name, ...(entry.maxSdkVersion === undefined ? {} : { maxSdkVersion: entry.maxSdkVersion as number }) }
+        }),
+      }
+    }
+    for (const platform of ['ios', 'macos'] as const) {
+      const block = feature[platform] as Record<string, unknown> | undefined
+      if (block !== undefined) {
+        const infoPlist = parseInfoPlist(block.infoPlist, `${where}.${platform}`, fail)
+        out[platform] = infoPlist === undefined ? {} : { infoPlist }
+      }
+    }
+    if (feature.note !== undefined) {
+      if (typeof feature.note !== 'string') {
+        fail(`${where}.note 必須是字串`)
+      }
+      out.note = feature.note as string
+    }
+    result[name] = out
+  }
+  return { features: result }
 }
 
 const importOf = (entry: PluginEntry): string => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`
