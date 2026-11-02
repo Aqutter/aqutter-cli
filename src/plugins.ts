@@ -1,5 +1,5 @@
 // plugin 的專案端整合：把 aqutter.config.json 的 plugins 同步成 App 的 pubspec 依賴與 Dart 註冊清單。
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { CONFIG_FILE } from './config.ts'
@@ -58,22 +58,72 @@ export const parseDescriptor = (raw: unknown, source: string): PluginDescriptor 
 
 const importOf = (entry: PluginEntry): string => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`
 
-/** 產生 `lib/aqutter_plugins.dart`。 */
+/** `google-maps` → `google_maps_plugin.dart`（放在 `lib/plugins/`）。 */
+export const pluginFileName = (id: string): string => `${id.replace(/-/g, '_')}_plugin.dart`
+
+/** `GoogleMapsPlugin` → `buildGoogleMapsPlugin`。 */
+export const pluginFactoryName = (dartClass: string): string => `build${dartClass}`
+
+/** 使用者檔案的預設內容；CLI 只在檔案不存在時寫入。 */
+export const renderPluginFile = (entry: PluginEntry): string => {
+  return [
+    "import 'dart:async';",
+    '',
+    "import 'package:aqutter/aqutter.dart';",
+    `import '${importOf(entry)}';`,
+    '',
+    '/// 要給 plugin 帶參數就改這裡；aqutter CLI 之後不會覆蓋這個檔案。',
+    `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
+    '',
+  ].join('\n')
+}
+
+/** 產生 `lib/aqutter_plugins.dart`（每次整檔重寫）。 */
 export const renderPluginsDart = (plugins: PluginEntry[]): string => {
-  const imports = [...new Set(plugins.map(importOf))].sort()
+  const imports = plugins.map(entry => `plugins/${pluginFileName(entry.id)}`).sort()
   const lines = [
-    '// 由 `aqutter plugin` 產生，請勿手改；要增減 plugin 請用 `aqutter plugin add/remove`。',
-    '// ignore_for_file: directives_ordering',
+    '// 由 `aqutter plugin` 產生，請勿手改；要增減 plugin 請用 `aqutter plugin add/remove`，',
+    '// 要給 plugin 帶參數請改 lib/plugins/ 內各 plugin 的檔案。',
     "import 'package:aqutter/aqutter.dart';",
     ...imports.map(path => `import '${path}';`),
     '',
     '/// 傳給 `runAqutter(plugins: aqutterPlugins)`。',
     plugins.length === 0
-      ? 'final List<AqutterPlugin> aqutterPlugins = <AqutterPlugin>[];'
-      : `final List<AqutterPlugin> aqutterPlugins = <AqutterPlugin>[\n${plugins.map(entry => `  ${entry.dart.class}(),`).join('\n')}\n];`,
+      ? 'final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];'
+      : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[\n${plugins.map(entry => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join('\n')}\n];`,
     '',
   ]
   return lines.join('\n')
+}
+
+const pluginsDir = (project: Project): string => join(project.appDir, 'lib', 'plugins')
+
+/** 使用者檔案的路徑。 */
+export const pluginFilePath = (project: Project, id: string): string => join(pluginsDir(project), pluginFileName(id))
+
+/**
+ * 建立缺少的使用者檔案，絕不覆蓋既有的。先檢查所有既有檔案都有預期的工廠函式，
+ * 任何一個不合就拋錯且不寫入任何檔案。回傳新建立的檔案路徑。
+ */
+export const scaffoldPluginFiles = (project: Project, plugins: PluginEntry[]): string[] => {
+  const missing: PluginEntry[] = []
+  for (const entry of plugins) {
+    const file = pluginFilePath(project, entry.id)
+    if (!existsSync(file)) {
+      missing.push(entry)
+      continue
+    }
+    const factory = pluginFactoryName(entry.dart.class)
+    if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync(file, 'utf8'))) {
+      throw new Error(`${file} 已存在但沒有預期的函式 ${factory}；請補上 ${factory}(AqutterBootContext context)，或刪除該檔後重新執行 aqutter plugin sync。`)
+    }
+  }
+  return missing.map((entry) => {
+    const file = pluginFilePath(project, entry.id)
+    mkdirSync(pluginsDir(project), { recursive: true })
+    writeFileSync(file, renderPluginFile(entry))
+    return file
+  })
 }
 
 /** pubspec 的受管區塊內容（不含標記行）。 */
@@ -95,28 +145,34 @@ export const applyPubspecBlock = (pubspec: string, block: string[]): string => {
   return `${pubspec.slice(0, begin)}${PUBSPEC_BEGIN}\n${middle}${pubspec.slice(end)}`
 }
 
-/** 依 config 的 plugins 重寫 pubspec 與 `lib/aqutter_plugins.dart`。 */
-export const syncPlugins = (project: Project): void => {
+/**
+ * 依 config 的 plugins 建立缺少的使用者檔案，並重寫 pubspec 與 `lib/aqutter_plugins.dart`。
+ * 檢查（pubspec 標記、既有使用者檔案）都在寫入之前；回傳新建立的使用者檔案。
+ */
+export const syncPlugins = (project: Project): string[] => {
   const plugins = project.config.plugins
   const pubspecPath = join(project.appDir, 'pubspec.yaml')
   const original = readFileSync(pubspecPath, 'utf8')
   const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir))
+  const created = scaffoldPluginFiles(project, plugins)
   if (next !== original) {
     writeFileSync(pubspecPath, next)
   }
   writeFileSync(join(project.appDir, 'lib', PLUGINS_DART_FILE), renderPluginsDart(plugins))
+  return created
 }
 
 /**
  * 套用新的 plugin 清單：先同步 pubspec 與註冊清單，成功後才寫回 aqutter.config.json，
  * 避免同步失敗時留下「config 說有、pubspec 沒有」的半套狀態。其餘設定內容原樣保留。
  */
-export const updateConfigPlugins = (project: Project, update: (plugins: PluginEntry[]) => PluginEntry[]): void => {
+export const updateConfigPlugins = (project: Project, update: (plugins: PluginEntry[]) => PluginEntry[]): string[] => {
   const previous = project.config.plugins
   const next = update([...previous])
   project.config.plugins = next
+  let created: string[]
   try {
-    syncPlugins(project)
+    created = syncPlugins(project)
   }
   catch (error) {
     project.config.plugins = previous
@@ -131,6 +187,7 @@ export const updateConfigPlugins = (project: Project, update: (plugins: PluginEn
     raw.plugins = next
   }
   writeFileSync(file, `${JSON.stringify(raw, null, 2)}\n`)
+  return created
 }
 
 /** 讀已安裝 npm 套件內的描述檔。 */

@@ -1,8 +1,10 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { applyPubspecBlock, parseDescriptor, PUBSPEC_BEGIN, PUBSPEC_END, renderPluginsDart, renderPubspecBlock } from '../src/plugins.ts'
+import type { Project } from '../src/config.ts'
+import { applyPubspecBlock, parseDescriptor, pluginFactoryName, pluginFileName, pluginFilePath, PUBSPEC_BEGIN, PUBSPEC_END, renderPluginFile, renderPluginsDart, renderPubspecBlock, syncPlugins } from '../src/plugins.ts'
 import { pickInstalledName, toClassName, toSnake } from '../src/commands/plugin.ts'
 import { detectFramework, toAppName, toCamel, toDisplayName, usePathDependency } from '../src/commands/init.ts'
 import { substitute } from '../src/template.ts'
@@ -25,12 +27,41 @@ describe('plugin descriptor', () => {
 
 describe('plugin sync output', () => {
   it('renders an empty registry', () => {
-    expect(renderPluginsDart([])).toContain('<AqutterPlugin>[];')
+    expect(renderPluginsDart([])).toContain('final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];')
   })
-  it('renders imports and instances', () => {
-    const dart = renderPluginsDart([entry])
-    expect(dart).toContain("import 'package:aqutter_plugin_haptics/aqutter_plugin_haptics.dart';")
-    expect(dart).toContain('  HapticsPlugin(),')
+  it('renders builders and per-plugin imports', () => {
+    const maps = { id: 'google-maps', npm: 'm', dart: { package: 'aqutter_plugin_google_maps', class: 'GoogleMapsPlugin' } }
+    expect(renderPluginsDart([maps, entry])).toBe([
+      '// 由 `aqutter plugin` 產生，請勿手改；要增減 plugin 請用 `aqutter plugin add/remove`，',
+      '// 要給 plugin 帶參數請改 lib/plugins/ 內各 plugin 的檔案。',
+      "import 'package:aqutter/aqutter.dart';",
+      "import 'plugins/google_maps_plugin.dart';",
+      "import 'plugins/haptics_plugin.dart';",
+      '',
+      '/// 傳給 `runAqutter(plugins: aqutterPlugins)`。',
+      'final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[',
+      "  AqutterPluginBuilder('google-maps', buildGoogleMapsPlugin),",
+      "  AqutterPluginBuilder('haptics', buildHapticsPlugin),",
+      '];',
+      '',
+    ].join('\n'))
+  })
+  it('derives file and factory names', () => {
+    expect(pluginFileName('google-maps')).toBe('google_maps_plugin.dart')
+    expect(pluginFileName('battery')).toBe('battery_plugin.dart')
+    expect(pluginFactoryName('GoogleMapsPlugin')).toBe('buildGoogleMapsPlugin')
+  })
+  it('renders the default user file', () => {
+    expect(renderPluginFile(entry)).toBe([
+      "import 'dart:async';",
+      '',
+      "import 'package:aqutter/aqutter.dart';",
+      "import 'package:aqutter_plugin_haptics/aqutter_plugin_haptics.dart';",
+      '',
+      '/// 要給 plugin 帶參數就改這裡；aqutter CLI 之後不會覆蓋這個檔案。',
+      'FutureOr<AqutterPlugin> buildHapticsPlugin(AqutterBootContext context) => HapticsPlugin();',
+      '',
+    ].join('\n'))
   })
   it('renders pubspec path dependencies relative to the app dir', () => {
     expect(renderPubspecBlock([entry], '/proj', '/proj/aqutter')).toEqual([
@@ -144,5 +175,83 @@ describe('pickInstalledName', () => {
   it('returns undefined when nothing identifies the package', () => {
     const both = specs({ nuxt: '4.0.0' })
     expect(pickInstalledName(both, both, 'file:C:/unknown')).toBeUndefined()
+  })
+})
+
+describe('syncPlugins', () => {
+  const setup = (plugins: typeof entry[]): { project: Project, cleanup: () => void } => {
+    const root = mkdtempSync(join(tmpdir(), 'aqutter-plugins-'))
+    const appDir = join(root, 'app')
+    mkdirSync(join(appDir, 'lib'), { recursive: true })
+    writeFileSync(join(appDir, 'pubspec.yaml'), `dependencies:
+${PUBSPEC_BEGIN}
+${PUBSPEC_END}
+`)
+    const project = { root, appDir, config: { plugins } } as unknown as Project
+    return { project, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+  }
+
+  it('creates missing user files and rewrites the registry', () => {
+    const { project, cleanup } = setup([entry])
+    try {
+      const created = syncPlugins(project)
+      expect(created).toEqual([pluginFilePath(project, 'haptics')])
+      expect(readFileSync(created[0], 'utf8')).toBe(renderPluginFile(entry))
+      expect(readFileSync(join(project.appDir, 'lib', 'aqutter_plugins.dart'), 'utf8')).toBe(renderPluginsDart([entry]))
+    }
+    finally {
+      cleanup()
+    }
+  })
+
+  it('never overwrites an existing user file', () => {
+    const { project, cleanup } = setup([entry])
+    try {
+      const file = pluginFilePath(project, 'haptics')
+      mkdirSync(join(project.appDir, 'lib', 'plugins'))
+      const custom = 'FutureOr<AqutterPlugin> buildHapticsPlugin(AqutterBootContext c) => HapticsPlugin(level: 3);\n'
+      writeFileSync(file, custom)
+      expect(syncPlugins(project)).toEqual([])
+      expect(readFileSync(file, 'utf8')).toBe(custom)
+      expect(syncPlugins(project)).toEqual([])
+    }
+    finally {
+      cleanup()
+    }
+  })
+
+  it('fails without writing anything when an existing file lacks the factory', () => {
+    const maps = { id: 'google-maps', npm: 'm', dart: { package: 'aqutter_plugin_google_maps', class: 'GoogleMapsPlugin' } }
+    const { project, cleanup } = setup([entry, maps])
+    try {
+      mkdirSync(join(project.appDir, 'lib', 'plugins'))
+      writeFileSync(pluginFilePath(project, 'google-maps'), '// 空的\n')
+      expect(() => syncPlugins(project)).toThrow(/buildGoogleMapsPlugin/)
+      expect(readdirSync(join(project.appDir, 'lib', 'plugins'))).toEqual(['google_maps_plugin.dart'])
+      expect(readdirSync(join(project.appDir, 'lib'))).toEqual(['plugins'])
+      expect(readFileSync(join(project.appDir, 'pubspec.yaml'), 'utf8')).toBe(`dependencies:
+${PUBSPEC_BEGIN}
+${PUBSPEC_END}
+`)
+    }
+    finally {
+      cleanup()
+    }
+  })
+
+  it('upgrades the old registry form and keeps the user file when a plugin is dropped', () => {
+    const { project, cleanup } = setup([entry])
+    try {
+      writeFileSync(join(project.appDir, 'lib', 'aqutter_plugins.dart'), 'final List<AqutterPlugin> aqutterPlugins = <AqutterPlugin>[\n  HapticsPlugin(),\n];\n')
+      syncPlugins(project)
+      expect(readFileSync(join(project.appDir, 'lib', 'aqutter_plugins.dart'), 'utf8')).toContain("AqutterPluginBuilder('haptics', buildHapticsPlugin),")
+      project.config.plugins = []
+      syncPlugins(project)
+      expect(readFileSync(join(project.appDir, 'lib', 'aqutter_plugins.dart'), 'utf8')).toContain('<AqutterPluginEntry>[];')
+      expect(readdirSync(join(project.appDir, 'lib', 'plugins'))).toEqual(['haptics_plugin.dart'])
+    }
+    finally {
+      cleanup()
+    }
   })
 })

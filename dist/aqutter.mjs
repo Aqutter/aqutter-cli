@@ -2751,9 +2751,9 @@ ${sha256Hex.toLowerCase()}
 });
 
 // src/plugins.ts
-import { existsSync as existsSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "node:fs";
 import { join as join8, relative as relative2 } from "node:path";
-var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, importOf, renderPluginsDart, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
+var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, importOf, pluginFileName, pluginFactoryName, renderPluginFile, renderPluginsDart, pluginsDir, pluginFilePath, scaffoldPluginFiles, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
 var init_plugins = __esm({
   "src/plugins.ts"() {
     "use strict";
@@ -2803,21 +2803,57 @@ var init_plugins = __esm({
       };
     };
     importOf = (entry) => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`;
+    pluginFileName = (id) => `${id.replace(/-/g, "_")}_plugin.dart`;
+    pluginFactoryName = (dartClass) => `build${dartClass}`;
+    renderPluginFile = (entry) => {
+      return [
+        "import 'dart:async';",
+        "",
+        "import 'package:aqutter/aqutter.dart';",
+        `import '${importOf(entry)}';`,
+        "",
+        "/// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u88E1\uFF1Baqutter CLI \u4E4B\u5F8C\u4E0D\u6703\u8986\u84CB\u9019\u500B\u6A94\u6848\u3002",
+        `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
+        ""
+      ].join("\n");
+    };
     renderPluginsDart = (plugins) => {
-      const imports = [...new Set(plugins.map(importOf))].sort();
+      const imports = plugins.map((entry) => `plugins/${pluginFileName(entry.id)}`).sort();
       const lines = [
-        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\u3002",
-        "// ignore_for_file: directives_ordering",
+        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\uFF0C",
+        "// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u8ACB\u6539 lib/plugins/ \u5167\u5404 plugin \u7684\u6A94\u6848\u3002",
         "import 'package:aqutter/aqutter.dart';",
         ...imports.map((path) => `import '${path}';`),
         "",
         "/// \u50B3\u7D66 `runAqutter(plugins: aqutterPlugins)`\u3002",
-        plugins.length === 0 ? "final List<AqutterPlugin> aqutterPlugins = <AqutterPlugin>[];" : `final List<AqutterPlugin> aqutterPlugins = <AqutterPlugin>[
-${plugins.map((entry) => `  ${entry.dart.class}(),`).join("\n")}
+        plugins.length === 0 ? "final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];" : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[
+${plugins.map((entry) => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join("\n")}
 ];`,
         ""
       ];
       return lines.join("\n");
+    };
+    pluginsDir = (project) => join8(project.appDir, "lib", "plugins");
+    pluginFilePath = (project, id) => join8(pluginsDir(project), pluginFileName(id));
+    scaffoldPluginFiles = (project, plugins) => {
+      const missing = [];
+      for (const entry of plugins) {
+        const file = pluginFilePath(project, entry.id);
+        if (!existsSync7(file)) {
+          missing.push(entry);
+          continue;
+        }
+        const factory = pluginFactoryName(entry.dart.class);
+        if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync8(file, "utf8"))) {
+          throw new Error(`${file} \u5DF2\u5B58\u5728\u4F46\u6C92\u6709\u9810\u671F\u7684\u51FD\u5F0F ${factory}\uFF1B\u8ACB\u88DC\u4E0A ${factory}(AqutterBootContext context)\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u5F8C\u91CD\u65B0\u57F7\u884C aqutter plugin sync\u3002`);
+        }
+      }
+      return missing.map((entry) => {
+        const file = pluginFilePath(project, entry.id);
+        mkdirSync6(pluginsDir(project), { recursive: true });
+        writeFileSync5(file, renderPluginFile(entry));
+        return file;
+      });
     };
     renderPubspecBlock = (plugins, projectRoot, appDir) => {
       return plugins.flatMap((entry) => {
@@ -2841,17 +2877,20 @@ ${middle}${pubspec.slice(end)}`;
       const pubspecPath = join8(project.appDir, "pubspec.yaml");
       const original = readFileSync8(pubspecPath, "utf8");
       const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
+      const created = scaffoldPluginFiles(project, plugins);
       if (next !== original) {
         writeFileSync5(pubspecPath, next);
       }
       writeFileSync5(join8(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
+      return created;
     };
     updateConfigPlugins = (project, update) => {
       const previous = project.config.plugins;
       const next = update([...previous]);
       project.config.plugins = next;
+      let created;
       try {
-        syncPlugins(project);
+        created = syncPlugins(project);
       } catch (error) {
         project.config.plugins = previous;
         throw error;
@@ -2865,6 +2904,7 @@ ${middle}${pubspec.slice(end)}`;
       }
       writeFileSync5(file, `${JSON.stringify(raw, null, 2)}
 `);
+      return created;
     };
     readInstalledDescriptor = (projectRoot, npmName) => {
       const file = join8(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
@@ -3036,9 +3076,9 @@ __export(plugin_exports, {
   toSnake: () => toSnake
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync9, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync10, rmSync, writeFileSync as writeFileSync6 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join10, relative as relative3, resolve as resolve5 } from "node:path";
-var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, remove, runPlugin;
+var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, reportCreated, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
     "use strict";
@@ -3153,16 +3193,24 @@ var init_plugin = __esm({
       if (project.config.plugins.some((entry) => entry.id === descriptor.id && entry.npm !== npmName)) {
         return fail2(`plugin id\u300C${descriptor.id}\u300D\u5DF2\u88AB\u53E6\u4E00\u500B\u5957\u4EF6\u4F7F\u7528\u3002`);
       }
-      updateConfigPlugins(project, (plugins) => [
+      const created = updateConfigPlugins(project, (plugins) => [
         ...plugins.filter((entry) => entry.id !== descriptor.id),
         { id: descriptor.id, npm: npmName, dart: descriptor.dart }
       ].sort((a, b) => a.id.localeCompare(b.id)));
       console.log(`[${TAG3}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
+      reportCreated(project, created);
+    };
+    reportCreated = (project, created) => {
+      for (const file of created) {
+        console.log(`[${TAG3}] \u5DF2\u5EFA\u7ACB ${relative3(project.root, file).split("\\").join("/")}\uFF08\u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u500B\u6A94\uFF0C\u4E4B\u5F8C\u4E0D\u6703\u88AB\u8986\u84CB\uFF09\u3002`);
+      }
     };
     remove = (cwd, argv) => {
-      const id = argv[0];
+      const { positional } = parseArgs(argv.filter((arg) => arg !== "--purge"));
+      const purge = argv.includes("--purge");
+      const id = positional[0];
       if (!id) {
-        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id>");
+        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id> [--purge]");
       }
       const project = loadProject(cwd);
       const entry = project.config.plugins.find((plugin) => plugin.id === id);
@@ -3173,6 +3221,17 @@ var init_plugin = __esm({
       const pm = detectPackageManager(project.root);
       runPm(pm, ["remove", entry.npm], project.root);
       console.log(`[${TAG3}] \u5DF2\u79FB\u9664 plugin\u300C${id}\u300D\u3002`);
+      const file = pluginFilePath(project, id);
+      if (!existsSync9(file)) {
+        return;
+      }
+      const shown = relative3(project.root, file).split("\\").join("/");
+      if (purge) {
+        rmSync(file);
+        console.log(`[${TAG3}] \u5DF2\u522A\u9664 ${shown}\u3002`);
+      } else {
+        console.log(`[${TAG3}] \u5DF2\u4FDD\u7559 ${shown}\uFF08\u5167\u6709\u4F60\u7684\u5BA2\u88FD\uFF09\uFF1B\u4E0D\u9700\u8981\u6642\u8ACB\u81EA\u884C\u522A\u9664\uFF0C\u6216\u6539\u7528 --purge\u3002`);
+      }
     };
     runPlugin = async (cwd, argv) => {
       const [sub, ...rest] = argv;
@@ -3185,8 +3244,9 @@ var init_plugin = __esm({
           return remove(cwd, rest);
         case "sync": {
           const project = loadProject(cwd);
-          syncPlugins(project);
+          const created = syncPlugins(project);
           console.log(`[${TAG3}] \u5DF2\u540C\u6B65 ${project.config.plugins.length} \u500B plugin\u3002`);
+          reportCreated(project, created);
           return;
         }
         case "list": {
@@ -3917,7 +3977,7 @@ __export(seed_exports, {
   runSeed: () => runSeed
 });
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync6, readFileSync as readFileSync13, rmSync } from "node:fs";
+import { copyFileSync as copyFileSync2, mkdirSync as mkdirSync7, readFileSync as readFileSync13, rmSync as rmSync2 } from "node:fs";
 import { join as join15, relative as relative5 } from "node:path";
 var TAG5, WEB_ARTIFACT_NAME, fail4, runSeed;
 var init_seed = __esm({
@@ -3952,7 +4012,7 @@ var init_seed = __esm({
         console.log(`[${TAG5}] clean: ${web.cleanDirs.join(" / ")}\uFF08\u907F\u514D\u6CBF\u7528\u524D\u4E00\u4EFD env \u7684\u8A2D\u5B9A\u503C\uFF09`);
       }
       for (const dir of web.cleanDirs) {
-        rmSync(join15(project.root, dir), {
+        rmSync2(join15(project.root, dir), {
           recursive: true,
           force: true
         });
@@ -3975,7 +4035,7 @@ var init_seed = __esm({
       console.log(`[${TAG5}] pack seed`);
       packSeed(project, web.outputDir);
       const { version } = JSON.parse(readFileSync13(project.seedVersion, "utf8"));
-      mkdirSync6(project.artifactsDir, { recursive: true });
+      mkdirSync7(project.artifactsDir, { recursive: true });
       const artifact = join15(project.artifactsDir, `${WEB_ARTIFACT_NAME}_${envName}_${version}.zip`);
       copyFileSync2(project.seedBundle, artifact);
       console.log(`[${TAG5}] \u5B8C\u6210\uFF08env=${envFile}\uFF09\u2192 ${relative5(project.root, artifact)}`);
@@ -3984,7 +4044,7 @@ var init_seed = __esm({
 });
 
 // src/signing.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync7, readFileSync as readFileSync14, readdirSync as readdirSync4, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync8, readFileSync as readFileSync14, readdirSync as readdirSync4, writeFileSync as writeFileSync8 } from "node:fs";
 import { join as join16 } from "node:path";
 function signingSectionOf(config, signingPath, platformKey) {
   const section = config[platformKey];
@@ -4094,7 +4154,7 @@ var init_signing = __esm({
       if (exportOptionsPath) {
         exportOptions = join16(project.appDir, exportOptionsPath);
       } else {
-        mkdirSync7(paths.buildDir, { recursive: true });
+        mkdirSync8(paths.buildDir, { recursive: true });
         writeFileSync8(exportOptions, renderExportOptions(ios));
         console.log(`[${TAG6}] \u5DF2\u7531\u7C3D\u7AE0\u8A2D\u5B9A\u7522\u751F ${exportOptions}`);
       }
@@ -4174,7 +4234,7 @@ __export(build_exports, {
   locateProduct: () => locateProduct,
   runBuild: () => runBuild
 });
-import { copyFileSync as copyFileSync3, existsSync as existsSync14, mkdirSync as mkdirSync8, readFileSync as readFileSync15, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync9 } from "node:fs";
+import { copyFileSync as copyFileSync3, existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, readdirSync as readdirSync5, readlinkSync, writeFileSync as writeFileSync9 } from "node:fs";
 import { basename as basename3, join as join17, relative as relative6 } from "node:path";
 var TAG7, FLUTTER_TARGET, fail6, BuildError, DESKTOP_ARCH, findSingle, locateProduct, artifactStem, ZIP_OS_UNIX, UNIX_MODE_SHIFT, UNIX_TYPE_FILE, UNIX_TYPE_SYMLINK, UNIX_PERMISSION_MASK, SYMLINK_PERMISSION, unixAttrs, zipEntryOf, zipDirectory, publishArtifact, step2, SIGNING_SECTION, HOST_PLATFORMS, PLATFORM_LABEL, buildOne, promptSelections, runBuild;
 var init_build = __esm({
@@ -4329,7 +4389,7 @@ var init_build = __esm({
       if (!product.path) {
         throw new BuildError(`\u6253\u5305\u5B8C\u6210\u4F46\u627E\u4E0D\u5230\u7522\u7269\uFF1A${product.expected}`);
       }
-      mkdirSync8(project.artifactsDir, { recursive: true });
+      mkdirSync9(project.artifactsDir, { recursive: true });
       const stem = artifactStem(project.config.artifactName, envName, flavorName, version);
       if (product.kind === "file") {
         const destination2 = join17(project.artifactsDir, `${stem}.${target}`);
@@ -4754,7 +4814,7 @@ __export(env_exports, {
   removeEnvironment: () => removeEnvironment,
   runEnv: () => runEnv
 });
-import { copyFileSync as copyFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync9, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
+import { copyFileSync as copyFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync10, readFileSync as readFileSync17, writeFileSync as writeFileSync11 } from "node:fs";
 import { dirname as dirname3, join as join19 } from "node:path";
 var TAG9, readRawConfig, writeRawConfig, isEmptyObject, addEnvironment, removeEnvironment, describeWeb, listEnvironments, fail8, USAGE2, runEnv;
 var init_env = __esm({
@@ -4795,7 +4855,7 @@ var init_env = __esm({
         } else {
           source = join19(project.root, project.config.envDir, ".env.example");
         }
-        mkdirSync9(dirname3(target), { recursive: true });
+        mkdirSync10(dirname3(target), { recursive: true });
         if (existsSync16(source)) {
           copyFileSync4(source, target);
         } else if (options.from !== void 0) {

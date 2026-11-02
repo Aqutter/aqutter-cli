@@ -4,20 +4,23 @@
 //       由範本產生 plugin 專案（同時是 npm 套件與 Dart 套件）。
 //   aqutter plugin add <來源> [--no-install]
 //       以套件管理器安裝 npm 套件（來源可為套件名、github:owner/repo、file:路徑），讀 aqutter-plugin.json，
-//       登記到 aqutter.config.json，並同步 pubspec 依賴與 lib/aqutter_plugins.dart。
-//   aqutter plugin remove <id>
-//   aqutter plugin sync        依 aqutter.config.json 重寫 pubspec 與註冊清單。
+//       登記到 aqutter.config.json，並同步 pubspec 依賴、重寫 lib/aqutter_plugins.dart，
+//       且建立缺少的 lib/plugins/<id>_plugin.dart（使用者檔案，只建立、永不覆蓋）。
+//   aqutter plugin remove <id> [--purge]
+//       預設保留 lib/plugins/<id>_plugin.dart 並印出路徑；--purge 才刪除。
+//   aqutter plugin sync        依 aqutter.config.json 重寫 pubspec 與註冊清單、建立缺少的使用者檔案。
 //   aqutter plugin list
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 import { loadProject } from '../config.ts'
+import type { Project } from '../config.ts'
 import { IS_WIN, parseArgs } from '../shared.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
-import { PLUGIN_ID_PATTERN, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
+import { PLUGIN_ID_PATTERN, pluginFilePath, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
 import { addArgs, detectPackageManager } from '../web.ts'
 import { readManifestFlags } from '../manifest.ts'
 import { loadExpectedProfile } from './doctor.ts'
@@ -161,17 +164,26 @@ const add = (cwd: string, argv: string[]): void => {
   if (project.config.plugins.some(entry => entry.id === descriptor.id && entry.npm !== npmName)) {
     return fail(`plugin id「${descriptor.id}」已被另一個套件使用。`)
   }
-  updateConfigPlugins(project, plugins => [
+  const created = updateConfigPlugins(project, plugins => [
     ...plugins.filter(entry => entry.id !== descriptor.id),
     { id: descriptor.id, npm: npmName, dart: descriptor.dart },
   ].sort((a, b) => a.id.localeCompare(b.id)))
   console.log(`[${TAG}] 已加入 plugin「${descriptor.id}」（${npmName}）。請在 ${project.config.appDir}/ 執行 flutter pub get。`)
+  reportCreated(project, created)
+}
+
+const reportCreated = (project: Project, created: string[]): void => {
+  for (const file of created) {
+    console.log(`[${TAG}] 已建立 ${relative(project.root, file).split('\\').join('/')}（要給 plugin 帶參數就改這個檔，之後不會被覆蓋）。`)
+  }
 }
 
 const remove = (cwd: string, argv: string[]): void => {
-  const id = argv[0]
+  const { positional } = parseArgs(argv.filter(arg => arg !== '--purge'))
+  const purge = argv.includes('--purge')
+  const id = positional[0]
   if (!id) {
-    return fail('用法：aqutter plugin remove <id>')
+    return fail('用法：aqutter plugin remove <id> [--purge]')
   }
   const project = loadProject(cwd)
   const entry = project.config.plugins.find(plugin => plugin.id === id)
@@ -182,6 +194,18 @@ const remove = (cwd: string, argv: string[]): void => {
   const pm = detectPackageManager(project.root)
   runPm(pm, ['remove', entry.npm], project.root)
   console.log(`[${TAG}] 已移除 plugin「${id}」。`)
+  const file = pluginFilePath(project, id)
+  if (!existsSync(file)) {
+    return
+  }
+  const shown = relative(project.root, file).split('\\').join('/')
+  if (purge) {
+    rmSync(file)
+    console.log(`[${TAG}] 已刪除 ${shown}。`)
+  }
+  else {
+    console.log(`[${TAG}] 已保留 ${shown}（內有你的客製）；不需要時請自行刪除，或改用 --purge。`)
+  }
 }
 
 export const runPlugin = async (cwd: string, argv: string[]): Promise<void> => {
@@ -195,8 +219,9 @@ export const runPlugin = async (cwd: string, argv: string[]): Promise<void> => {
       return remove(cwd, rest)
     case 'sync': {
       const project = loadProject(cwd)
-      syncPlugins(project)
+      const created = syncPlugins(project)
       console.log(`[${TAG}] 已同步 ${project.config.plugins.length} 個 plugin。`)
+      reportCreated(project, created)
       return
     }
     case 'list': {
