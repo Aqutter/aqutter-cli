@@ -8,6 +8,8 @@ import { applyPubspecBlock, parseDescriptor, pluginFactoryName, pluginFileName, 
 import { pickInstalledName, toClassName, toSnake } from '../src/commands/plugin.ts'
 import { detectFramework, toAppName, toCamel, toDisplayName, usePathDependency } from '../src/commands/init.ts'
 import { substitute } from '../src/template.ts'
+import { rangeToConstraint, satisfiesRange } from '../src/semverRange.ts'
+import { findRequireProblems } from '../src/plugins.ts'
 
 const entry = { id: 'haptics', npm: '@x/aqutter-plugin-haptics', dart: { package: 'aqutter_plugin_haptics', class: 'HapticsPlugin' } }
 
@@ -253,5 +255,56 @@ ${PUBSPEC_END}
     finally {
       cleanup()
     }
+  })
+})
+
+describe('plugin requires', () => {
+  const base = { schema: 1, id: 'map', dart: { package: 'aqutter_plugin_map', class: 'MapPlugin' } }
+
+  it('is optional and passed through when valid', () => {
+    expect(parseDescriptor(base, 'x').requires).toBeUndefined()
+    expect(parseDescriptor({ ...base, requires: { 'aqutter-plugin-location': '^0.0.0' } }, 'x').requires).toEqual({ 'aqutter-plugin-location': '^0.0.0' })
+  })
+  it('rejects a non-object, an empty name and unsupported ranges', () => {
+    expect(() => parseDescriptor({ ...base, requires: ['aqutter-plugin-location'] }, 'x')).toThrow(/requires/)
+    expect(() => parseDescriptor({ ...base, requires: { '': '^1.0.0' } }, 'x')).toThrow(/requires/)
+    for (const range of ['>=1.0.0', '*', '1.x', '^1.0', '1.0.0-beta', 3]) {
+      expect(() => parseDescriptor({ ...base, requires: { b: range } }, 'x'), String(range)).toThrow(/requires\.b/)
+    }
+  })
+
+  it('translates ^, ~ and exact versions into comparators', () => {
+    expect(rangeToConstraint('^1.2.3')).toBe('>=1.2.3 <2.0.0')
+    expect(rangeToConstraint('^0.2.3')).toBe('>=0.2.3 <0.3.0')
+    expect(rangeToConstraint('^0.0.0')).toBe('>=0.0.0 <0.0.1')
+    expect(rangeToConstraint('~1.2.3')).toBe('>=1.2.3 <1.3.0')
+    expect(rangeToConstraint('1.2.3')).toBe('=1.2.3')
+    expect(rangeToConstraint('>=1.0.0')).toBeNull()
+  })
+  it('checks a version against a range', () => {
+    expect(satisfiesRange('0.0.0', '^0.0.0')).toBe(true)
+    expect(satisfiesRange('0.0.1', '^0.0.0')).toBe(false)
+    expect(satisfiesRange('1.4.0', '^1.2.3')).toBe(true)
+    expect(satisfiesRange('2.0.0', '^1.2.3')).toBe(false)
+    expect(satisfiesRange('1.2.9', '~1.2.3')).toBe(true)
+    expect(satisfiesRange('1.3.0', '~1.2.3')).toBe(false)
+    expect(satisfiesRange('x', '^1.0.0')).toBeNull()
+  })
+
+  describe('findRequireProblems', () => {
+    const location = { id: 'location', npm: 'aqutter-plugin-location', dart: { package: 'aqutter_plugin_location', class: 'LocationPlugin' } }
+    const owner = { ...parseDescriptor(base, 'x'), requires: { 'aqutter-plugin-location': '^1.0.0' } }
+
+    it('is empty when every required plugin is registered at an accepted version', () => {
+      expect(findRequireProblems('map', owner, [location], () => '1.2.0')).toEqual([])
+      expect(findRequireProblems('map', parseDescriptor(base, 'x'), [], () => null)).toEqual([])
+    })
+    it('names the owner, the required plugin and the installed version on a conflict', () => {
+      expect(findRequireProblems('map', owner, [location], () => '2.0.0')).toEqual(['map 要求 aqutter-plugin-location ^1.0.0，已安裝 2.0.0'])
+    })
+    it('reports a required plugin that is not registered or whose version is unreadable', () => {
+      expect(findRequireProblems('map', owner, [], () => '1.0.0')[0]).toMatch(/還沒登記/)
+      expect(findRequireProblems('map', owner, [location], () => null)[0]).toMatch(/讀不到/)
+    })
   })
 })

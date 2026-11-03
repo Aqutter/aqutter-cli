@@ -23,7 +23,7 @@ import type { Project } from '../config.ts'
 import { assertCliSupports, compareVersions, describeSource, loadConfiguredManifest, readManifestFlags, resolveRelease } from '../manifest.ts'
 import type { ManifestRelease } from '../manifest.ts'
 import { collectRequirements, findNativeGaps, selectFeatures } from '../native.ts'
-import { readInstalledDescriptor } from '../plugins.ts'
+import { findRequireProblems, readInstalledDescriptor, readInstalledVersion } from '../plugins.ts'
 import { IS_WIN } from '../shared.ts'
 import {
   LOCKED_PACKAGES,
@@ -89,6 +89,8 @@ export interface Facts {
   lock: Record<string, LockGitPackage> | null
   /** 已登記的 plugin 所選功能還沒補上的原生設定（契約 plugin-native-requirements）。 */
   nativeGaps?: { plugin: string, gaps: string[] }[]
+  /** 已登記的 plugin 的 `requires` 沒滿足的地方（缺 plugin 或版本不符）。 */
+  requireProblems?: { plugin: string, problems: string[] }[]
 }
 
 const UPGRADE_HINT = '執行 `aqutter upgrade`'
@@ -254,6 +256,16 @@ export const diagnose = (facts: Facts): Finding[] => {
       fix: '依上列補到 App 的 AndroidManifest.xml／Info.plist（CLI 不會替你改）；不需要某個功能時用 `aqutter plugin add … --features=` 縮小範圍。',
     })
   }
+
+  // 7. plugin 的 requires 是否滿足：缺了被需要的 plugin，或版本不在範圍內，執行時會 PLUGIN_NOT_FOUND 或行為不符
+  for (const item of facts.requireProblems ?? []) {
+    add({
+      level: 'error',
+      title: `plugin「${item.plugin}」需要的其他 plugin 沒有滿足`,
+      detail: item.problems.join('；'),
+      fix: '用 `aqutter plugin add` 補裝被需要的 plugin；版本衝突時調整其中一個 plugin 的版本（一個 App 每個 plugin 只能有一個版本）。',
+    })
+  }
   return findings
 }
 
@@ -293,7 +305,24 @@ export const gatherFacts = (project: Project, expected: ExpectedProfile): Facts 
     npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
     lock: lockText === null ? null : parseLock(lockText),
     nativeGaps: gatherNativeGaps(project),
+    requireProblems: gatherRequireProblems(project),
   }
+}
+
+const gatherRequireProblems = (project: Project): { plugin: string, problems: string[] }[] => {
+  const result: { plugin: string, problems: string[] }[] = []
+  for (const entry of project.config.plugins) {
+    try {
+      const problems = findRequireProblems(entry.id, readInstalledDescriptor(project.root, entry.npm), project.config.plugins, name => readInstalledVersion(project.root, name))
+      if (problems.length > 0) {
+        result.push({ plugin: entry.id, problems })
+      }
+    }
+    catch {
+      // 套件尚未安裝或描述檔壞掉：交給 plugin 指令回報
+    }
+  }
+  return result
 }
 
 const gatherNativeGaps = (project: Project): { plugin: string, gaps: string[] }[] => {

@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 
 import { CONFIG_FILE } from './config.ts'
 import type { NativeDeclaration, NativeFeature, PluginDescriptor, PluginEntry, Project } from './config.ts'
+import { rangeToConstraint, satisfiesRange } from './semverRange.ts'
 
 export const PLUGIN_DESCRIPTOR_FILE = 'aqutter-plugin.json'
 
@@ -54,7 +55,24 @@ export const parseDescriptor = (raw: unknown, source: string): PluginDescriptor 
       ...(dart.import === undefined ? {} : { import: dart.import as string }),
     },
     ...(value.native === undefined ? {} : { native: parseNative(value.native, fail) }),
+    ...(value.requires === undefined ? {} : { requires: parseRequires(value.requires, fail) }),
   }
+}
+
+/** 驗證 `requires`：鍵是 npm 套件名，值是 `^`、`~` 或精確版本。 */
+const parseRequires = (raw: unknown, fail: (reason: string) => never): Record<string, string> => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return fail('requires 必須是物件（npm 套件名 → 版本範圍）')
+  }
+  for (const [name, range] of Object.entries(raw)) {
+    if (name.length === 0) {
+      fail('requires 的套件名不可為空')
+    }
+    if (typeof range !== 'string' || rangeToConstraint(range) === null) {
+      fail(`requires.${name} 必須是 ^x.y.z、~x.y.z 或精確的 x.y.z`)
+    }
+  }
+  return raw as Record<string, string>
 }
 
 const FEATURE_PATTERN = /^[a-z][a-z0-9-]*$/
@@ -269,4 +287,41 @@ export const readInstalledDescriptor = (projectRoot: string, npmName: string): P
     throw new Error(`${npmName} 內找不到 ${PLUGIN_DESCRIPTOR_FILE}，它不是 Aqutter plugin。`)
   }
   return parseDescriptor(JSON.parse(readFileSync(file, 'utf8')), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`)
+}
+
+/** 讀已安裝 npm 套件的版本；沒裝或讀不到回 null。 */
+export const readInstalledVersion = (projectRoot: string, npmName: string): string | null => {
+  const file = join(projectRoot, 'node_modules', npmName, 'package.json')
+  if (!existsSync(file)) {
+    return null
+  }
+  const version = (JSON.parse(readFileSync(file, 'utf8')) as { version?: unknown }).version
+  return typeof version === 'string' ? version : null
+}
+
+/**
+ * 檢查 `descriptor.requires` 是否都滿足：每個被需要的 plugin 必須已登記（以 npm 套件名比對）、
+ * 已安裝版本落在範圍內。回傳人看得懂的問題清單，空陣列代表都滿足。
+ */
+export const findRequireProblems = (
+  owner: string,
+  descriptor: PluginDescriptor,
+  registered: readonly PluginEntry[],
+  installedVersion: (npmName: string) => string | null,
+): string[] => {
+  const problems: string[] = []
+  for (const [name, range] of Object.entries(descriptor.requires ?? {})) {
+    if (!registered.some(entry => entry.npm === name)) {
+      problems.push(`${owner} 需要 ${name}（${range}），但它還沒登記`)
+      continue
+    }
+    const version = installedVersion(name)
+    if (version === null) {
+      problems.push(`${owner} 需要 ${name}（${range}），但讀不到它的已安裝版本`)
+    }
+    else if (satisfiesRange(version, range) !== true) {
+      problems.push(`${owner} 要求 ${name} ${range}，已安裝 ${version}`)
+    }
+  }
+  return problems
 }

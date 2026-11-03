@@ -314,6 +314,16 @@ describe('diagnose', () => {
     expect(found[0].detail).toContain('USE_BIOMETRIC')
   })
 
+  it('errors when a plugin requires another plugin that is missing or at the wrong version', () => {
+    const found = diagnose({ ...goodFacts(), requireProblems: [{ plugin: 'map', problems: ['map 要求 aqutter-plugin-location ^1.0.0，已安裝 2.0.0'] }] })
+      .filter(f => f.level !== 'ok')
+
+    expect(found).toHaveLength(1)
+    expect(found[0].level).toBe('error')
+    expect(found[0].title).toContain('map')
+    expect(found[0].detail).toContain('aqutter-plugin-location')
+  })
+
   it('errors when Flutter is missing or outside the allowed range', () => {
     expect(levels({ ...goodFacts(), installedFlutter: null })[0]).toMatch(/^error:/)
     expect(levels({ ...goodFacts(), installedFlutter: '3.38.6' })[0]).toMatch(/^error:Flutter 版本不符/)

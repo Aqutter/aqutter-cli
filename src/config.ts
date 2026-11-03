@@ -75,6 +75,8 @@ export interface PluginDescriptor {
   }
   /** 選填：各功能需要使用者在原生專案補的設定；沒有則不需要任何設定。 */
   native?: NativeDeclaration
+  /** 選填：本 plugin 需要的其他 plugin；鍵為 npm 套件名，值為版本範圍（`^`、`~` 或精確版本）。 */
+  requires?: Record<string, string>
 }
 
 /** `aqutter-plugin.json` 的 `native` 區塊（契約正本在 aqutter 的 docs/plugins.md）。 */

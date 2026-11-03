@@ -5,9 +5,10 @@
 //   aqutter plugin add <來源> [--no-install]
 //       以套件管理器安裝 npm 套件（來源可為套件名、github:owner/repo、file:路徑），讀 aqutter-plugin.json，
 //       登記到 aqutter.config.json，並同步 pubspec 依賴、重寫 lib/aqutter_plugins.dart，
+//       描述檔有 requires 時，一併安裝並登記被需要的 plugin、檢查版本範圍，
 //       且建立缺少的 lib/plugins/<id>_plugin.dart（使用者檔案，只建立、永不覆蓋）。
-//   aqutter plugin remove <id> [--purge]
-//       預設保留 lib/plugins/<id>_plugin.dart 並印出路徑；--purge 才刪除。
+//   aqutter plugin remove <id> [--purge] [--force]
+//       預設保留 lib/plugins/<id>_plugin.dart 並印出路徑；--purge 才刪除。仍被其他 plugin 的 requires 需要時拒絕，--force 才移除。
 //   aqutter plugin sync        依 aqutter.config.json 重寫 pubspec 與註冊清單、建立缺少的使用者檔案。
 //   aqutter plugin list
 
@@ -16,12 +17,12 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 import { loadProject } from '../config.ts'
-import type { PluginDescriptor, Project } from '../config.ts'
+import type { PluginDescriptor, PluginEntry, Project } from '../config.ts'
 import { collectRequirements, findNativeGaps, selectFeatures } from '../native.ts'
 import { IS_WIN, parseArgs } from '../shared.ts'
 import { findTemplateRoot, renderTree } from '../template.ts'
 import type { TemplateVariables } from '../template.ts'
-import { PLUGIN_ID_PATTERN, pluginFilePath, readInstalledDescriptor, syncPlugins, updateConfigPlugins } from '../plugins.ts'
+import { findRequireProblems, PLUGIN_ID_PATTERN, pluginFilePath, readInstalledDescriptor, readInstalledVersion, syncPlugins, updateConfigPlugins } from '../plugins.ts'
 import { addArgs, detectPackageManager } from '../web.ts'
 import { readManifestFlags } from '../manifest.ts'
 import { loadExpectedProfile } from './doctor.ts'
@@ -138,7 +139,34 @@ const create = async (cwd: string, argv: string[]): Promise<void> => {
   console.log(`  之後在 App 專案：aqutter plugin add file:../${dirName}`)
 }
 
-const add = (cwd: string, argv: string[]): void => {
+/**
+ * 登記 plugin 之前先處理它的 `requires`：已登記的只檢查版本；沒登記的取該 plugin 的 `package.json`
+ * `dependencies` 裡的來源，走同一個 add 流程安裝並登記（pnpm 不會把間接依賴提升到根目錄，
+ * 而 pubspec 用 `node_modules/<套件名>` 當路徑，所以被需要的 plugin 必須成為 App 的直接依賴）。
+ */
+const ensureRequires = (cwd: string, ownerNpm: string, descriptor: PluginDescriptor, seen: ReadonlySet<string>): void => {
+  const project = loadProject(cwd)
+  for (const [name, range] of Object.entries(descriptor.requires ?? {})) {
+    if (seen.has(name)) {
+      fail(`plugin 的 requires 形成循環：${[...seen, name].join(' → ')}`)
+    }
+    if (!project.config.plugins.some(entry => entry.npm === name)) {
+      const source = readDependencySpecs(join(project.root, 'node_modules', ownerNpm)).get(name)
+      if (source === undefined) {
+        fail(`${ownerNpm} 的 requires 列了 ${name}，但它的 package.json dependencies 沒有，無法判斷要從哪裡安裝。`)
+      }
+      console.log(`[${TAG}] ${descriptor.id} 需要 ${name}（${range}），一併安裝。`)
+      add(cwd, [source as string], new Set([...seen, name]))
+    }
+  }
+  const after = loadProject(cwd)
+  const problems = findRequireProblems(descriptor.id, descriptor, after.config.plugins, name => readInstalledVersion(after.root, name))
+  if (problems.length > 0) {
+    fail(`${problems.join('；')}。「${descriptor.id}」未登記；已一併安裝的 plugin 仍會保留，要還原請用 aqutter plugin remove。`)
+  }
+}
+
+const add = (cwd: string, argv: string[], seen: ReadonlySet<string> = new Set()): void => {
   // 契約允許 `--features a,b`（空白寫法）：先併成 `--features=a,b`，才不會被當成位置參數。
   const merged: string[] = []
   for (let index = 0; index < argv.length; index++) {
@@ -170,6 +198,9 @@ const add = (cwd: string, argv: string[]): void => {
   if (project.config.plugins.some(entry => entry.id === descriptor.id && entry.npm !== npmName)) {
     return fail(`plugin id「${descriptor.id}」已被另一個套件使用。`)
   }
+  ensureRequires(cwd, npmName, descriptor, new Set([...seen, npmName]))
+  // ensureRequires 可能已經登記了別的 plugin：以最新的 config 為準
+  const latest = loadProject(cwd)
   let features: string[] | undefined
   try {
     features = flags.features === undefined ? undefined : selectFeatures(descriptor, flags.features.split(',').map(name => name.trim()).filter(Boolean))
@@ -177,13 +208,13 @@ const add = (cwd: string, argv: string[]): void => {
   catch (error) {
     return fail((error as Error).message)
   }
-  const created = updateConfigPlugins(project, plugins => [
+  const created = updateConfigPlugins(latest, plugins => [
     ...plugins.filter(entry => entry.id !== descriptor.id),
     { id: descriptor.id, npm: npmName, dart: descriptor.dart, ...(features === undefined ? {} : { features }) },
   ].sort((a, b) => a.id.localeCompare(b.id)))
-  console.log(`[${TAG}] 已加入 plugin「${descriptor.id}」（${npmName}）。請在 ${project.config.appDir}/ 執行 flutter pub get。`)
-  reportCreated(project, created)
-  reportNativeGaps(project, descriptor, features)
+  console.log(`[${TAG}] 已加入 plugin「${descriptor.id}」（${npmName}）。請在 ${latest.config.appDir}/ 執行 flutter pub get。`)
+  reportCreated(latest, created)
+  reportNativeGaps(latest, descriptor, features)
 }
 
 /** 只讀使用者的原生檔，列出還要補的設定；CLI 不替使用者改。 */
@@ -211,17 +242,40 @@ const reportCreated = (project: Project, created: string[]): void => {
   }
 }
 
+/** 已登記的其他 plugin 中，`requires` 指向 [entry] 的 plugin id。 */
+const findDependents = (project: Project, entry: PluginEntry): string[] => {
+  const names: string[] = []
+  for (const other of project.config.plugins) {
+    if (other.id === entry.id) {
+      continue
+    }
+    try {
+      if (readInstalledDescriptor(project.root, other.npm).requires?.[entry.npm] !== undefined) {
+        names.push(other.id)
+      }
+    }
+    catch {
+      // 套件沒裝或描述檔壞掉：無從得知它需要什麼，不阻擋移除
+    }
+  }
+  return names
+}
+
 const remove = (cwd: string, argv: string[]): void => {
-  const { positional } = parseArgs(argv.filter(arg => arg !== '--purge'))
+  const { positional } = parseArgs(argv.filter(arg => arg !== '--purge' && arg !== '--force'))
   const purge = argv.includes('--purge')
   const id = positional[0]
   if (!id) {
-    return fail('用法：aqutter plugin remove <id> [--purge]')
+    return fail('用法：aqutter plugin remove <id> [--purge] [--force]')
   }
   const project = loadProject(cwd)
   const entry = project.config.plugins.find(plugin => plugin.id === id)
   if (!entry) {
     return fail(`專案內沒有 plugin「${id}」。`)
+  }
+  const dependents = findDependents(project, entry)
+  if (dependents.length > 0 && !argv.includes('--force')) {
+    return fail(`「${id}」仍被 ${dependents.map(name => `「${name}」`).join('、')} 的 requires 需要；先移除它們，或加 --force 強制移除。`)
   }
   updateConfigPlugins(project, plugins => plugins.filter(plugin => plugin.id !== id))
   const pm = detectPackageManager(project.root)

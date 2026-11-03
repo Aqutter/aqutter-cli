@@ -480,7 +480,7 @@ var init_manifestSnapshot = __esm({
   "src/manifestSnapshot.json"() {
     manifestSnapshot_default = {
       schema: 1,
-      generatedAt: "2026-10-28T12:59:30Z",
+      generatedAt: "2026-10-31T12:16:52Z",
       channels: {
         stable: "0.0.0"
       },
@@ -494,14 +494,14 @@ var init_manifestSnapshot = __esm({
           shell: {
             url: "https://github.com/Aqutter/aqutter.git",
             path: "shell",
-            ref: "4798e3d41530418651d7ac443700c3b5efeae8af"
+            ref: "b5f60fde4aef06b9d129ef1abb0ff5bdcea11320"
           },
           core: {
             url: "https://github.com/Aqutter/aqutter_core.git",
-            ref: "25b293f24343366d347f9738afd087ae7968b147"
+            ref: "8833f948c6e3a38cd2ad3cca4b849759d9a83104"
           },
           client: {
-            spec: "github:Aqutter/aqutter-js#c3efd8bccf49bef266fa50c4c318d6750f96e60a"
+            spec: "github:Aqutter/aqutter-js#b200b9314a23531aee698238506cd9a9f762990f"
           },
           cli: {
             min: "0.0.0"
@@ -938,240 +938,6 @@ var init_native = __esm({
   }
 });
 
-// src/plugins.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join5, relative } from "node:path";
-var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, FEATURE_PATTERN, parseInfoPlist, parseNative, importOf, pluginFileName, pluginFactoryName, renderPluginFile, renderPluginsDart, pluginsDir, pluginFilePath, scaffoldPluginFiles, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor;
-var init_plugins = __esm({
-  "src/plugins.ts"() {
-    "use strict";
-    init_config();
-    PLUGIN_DESCRIPTOR_FILE = "aqutter-plugin.json";
-    PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
-    PUBSPEC_BEGIN = "  # aqutter-plugins:begin\uFF08\u7531 `aqutter plugin` \u7DAD\u8B77\uFF0C\u8ACB\u52FF\u624B\u6539\uFF09";
-    PUBSPEC_END = "  # aqutter-plugins:end";
-    PLUGINS_DART_FILE = "aqutter_plugins.dart";
-    DART_PACKAGE_PATTERN = /^[a-z][a-z0-9_]*$/;
-    DART_CLASS_PATTERN = /^[A-Z][A-Za-z0-9_]*$/;
-    parseDescriptor = (raw, source) => {
-      const fail11 = (reason) => {
-        throw new Error(`${source} \u4E0D\u5408\u6CD5\uFF1A${reason}`);
-      };
-      if (typeof raw !== "object" || raw === null) {
-        return fail11("\u5FC5\u9808\u662F JSON \u7269\u4EF6");
-      }
-      const value = raw;
-      if (value.schema !== 1) {
-        fail11("schema \u5FC5\u9808\u70BA 1");
-      }
-      if (typeof value.id !== "string" || !PLUGIN_ID_PATTERN.test(value.id)) {
-        fail11(`id \u5FC5\u9808\u7B26\u5408 ${PLUGIN_ID_PATTERN}`);
-      }
-      const dart = value.dart;
-      if (typeof dart !== "object" || dart === null) {
-        return fail11("\u7F3A\u5C11 dart \u5340\u584A");
-      }
-      if (typeof dart.package !== "string" || !DART_PACKAGE_PATTERN.test(dart.package)) {
-        fail11("dart.package \u5FC5\u9808\u662F Dart \u5957\u4EF6\u540D\uFF08\u5C0F\u5BEB snake_case\uFF09");
-      }
-      if (typeof dart.class !== "string" || !DART_CLASS_PATTERN.test(dart.class)) {
-        fail11("dart.class \u5FC5\u9808\u662F Dart \u985E\u5225\u540D");
-      }
-      if (dart.import !== void 0 && typeof dart.import !== "string") {
-        fail11("dart.import \u5FC5\u9808\u662F\u5B57\u4E32");
-      }
-      return {
-        schema: 1,
-        id: value.id,
-        dart: {
-          package: dart.package,
-          class: dart.class,
-          ...dart.import === void 0 ? {} : { import: dart.import }
-        },
-        ...value.native === void 0 ? {} : { native: parseNative(value.native, fail11) }
-      };
-    };
-    FEATURE_PATTERN = /^[a-z][a-z0-9-]*$/;
-    parseInfoPlist = (raw, where, fail11) => {
-      if (raw === void 0) {
-        return void 0;
-      }
-      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        return fail11(`${where}.infoPlist \u5FC5\u9808\u662F\u7269\u4EF6`);
-      }
-      for (const [key, text] of Object.entries(raw)) {
-        if (typeof text !== "string") {
-          fail11(`${where}.infoPlist.${key} \u5FC5\u9808\u662F\u5B57\u4E32`);
-        }
-      }
-      return raw;
-    };
-    parseNative = (raw, fail11) => {
-      const features = typeof raw === "object" && raw !== null ? raw.features : void 0;
-      if (typeof features !== "object" || features === null || Array.isArray(features) || Object.keys(features).length === 0) {
-        return fail11("native.features \u5FC5\u9808\u662F\u81F3\u5C11\u4E00\u500B\u529F\u80FD\u7684\u7269\u4EF6");
-      }
-      const result = {};
-      for (const [name, rawFeature] of Object.entries(features)) {
-        const where = `native.features.${name}`;
-        if (!FEATURE_PATTERN.test(name)) {
-          fail11(`\u529F\u80FD\u540D\u300C${name}\u300D\u5FC5\u9808\u7B26\u5408 ${FEATURE_PATTERN}`);
-        }
-        if (typeof rawFeature !== "object" || rawFeature === null) {
-          return fail11(`${where} \u5FC5\u9808\u662F\u7269\u4EF6`);
-        }
-        const feature = rawFeature;
-        const out = {};
-        const android = feature.android;
-        if (android !== void 0) {
-          const list = android.permissions ?? [];
-          if (!Array.isArray(list)) {
-            return fail11(`${where}.android.permissions \u5FC5\u9808\u662F\u9663\u5217`);
-          }
-          out.android = {
-            permissions: list.map((item, index) => {
-              const entry = item;
-              if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name.includes(".")) {
-                return fail11(`${where}.android.permissions[${index}].name \u5FC5\u9808\u662F\u5B8C\u6574\u7684\u6B0A\u9650\u540D\u7A31`);
-              }
-              if (entry.maxSdkVersion !== void 0 && !Number.isInteger(entry.maxSdkVersion)) {
-                fail11(`${where}.android.permissions[${index}].maxSdkVersion \u5FC5\u9808\u662F\u6574\u6578`);
-              }
-              return { name: entry.name, ...entry.maxSdkVersion === void 0 ? {} : { maxSdkVersion: entry.maxSdkVersion } };
-            })
-          };
-        }
-        for (const platform of ["ios", "macos"]) {
-          const block = feature[platform];
-          if (block !== void 0) {
-            const infoPlist = parseInfoPlist(block.infoPlist, `${where}.${platform}`, fail11);
-            out[platform] = infoPlist === void 0 ? {} : { infoPlist };
-          }
-        }
-        if (feature.note !== void 0) {
-          if (typeof feature.note !== "string") {
-            fail11(`${where}.note \u5FC5\u9808\u662F\u5B57\u4E32`);
-          }
-          out.note = feature.note;
-        }
-        result[name] = out;
-      }
-      return { features: result };
-    };
-    importOf = (entry) => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`;
-    pluginFileName = (id) => `${id.replace(/-/g, "_")}_plugin.dart`;
-    pluginFactoryName = (dartClass) => `build${dartClass}`;
-    renderPluginFile = (entry) => {
-      return [
-        "import 'dart:async';",
-        "",
-        "import 'package:aqutter/aqutter.dart';",
-        `import '${importOf(entry)}';`,
-        "",
-        "/// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u88E1\uFF1Baqutter CLI \u4E4B\u5F8C\u4E0D\u6703\u8986\u84CB\u9019\u500B\u6A94\u6848\u3002",
-        `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
-        ""
-      ].join("\n");
-    };
-    renderPluginsDart = (plugins) => {
-      const imports = plugins.map((entry) => `plugins/${pluginFileName(entry.id)}`).sort();
-      const lines = [
-        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\uFF0C",
-        "// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u8ACB\u6539 lib/plugins/ \u5167\u5404 plugin \u7684\u6A94\u6848\u3002",
-        "import 'package:aqutter/aqutter.dart';",
-        ...imports.map((path) => `import '${path}';`),
-        "",
-        "/// \u50B3\u7D66 `runAqutter(plugins: aqutterPlugins)`\u3002",
-        plugins.length === 0 ? "final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];" : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[
-${plugins.map((entry) => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join("\n")}
-];`,
-        ""
-      ];
-      return lines.join("\n");
-    };
-    pluginsDir = (project) => join5(project.appDir, "lib", "plugins");
-    pluginFilePath = (project, id) => join5(pluginsDir(project), pluginFileName(id));
-    scaffoldPluginFiles = (project, plugins) => {
-      const missing = [];
-      for (const entry of plugins) {
-        const file = pluginFilePath(project, entry.id);
-        if (!existsSync4(file)) {
-          missing.push(entry);
-          continue;
-        }
-        const factory = pluginFactoryName(entry.dart.class);
-        if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync5(file, "utf8"))) {
-          throw new Error(`${file} \u5DF2\u5B58\u5728\u4F46\u6C92\u6709\u9810\u671F\u7684\u51FD\u5F0F ${factory}\uFF1B\u8ACB\u88DC\u4E0A ${factory}(AqutterBootContext context)\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u5F8C\u91CD\u65B0\u57F7\u884C aqutter plugin sync\u3002`);
-        }
-      }
-      return missing.map((entry) => {
-        const file = pluginFilePath(project, entry.id);
-        mkdirSync3(pluginsDir(project), { recursive: true });
-        writeFileSync2(file, renderPluginFile(entry));
-        return file;
-      });
-    };
-    renderPubspecBlock = (plugins, projectRoot, appDir) => {
-      return plugins.flatMap((entry) => {
-        const path = relative(appDir, join5(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
-        return [`  ${entry.dart.package}:`, `    path: ${path}`];
-      });
-    };
-    applyPubspecBlock = (pubspec, block) => {
-      const begin = pubspec.indexOf(PUBSPEC_BEGIN);
-      const end = pubspec.indexOf(PUBSPEC_END);
-      if (begin === -1 || end === -1 || end < begin) {
-        throw new Error(`pubspec.yaml \u7F3A\u5C11 plugin \u53D7\u7BA1\u5340\u584A\u6A19\u8A18\uFF08${PUBSPEC_BEGIN.trim()} \u2026 ${PUBSPEC_END.trim()}\uFF09\uFF0C\u8ACB\u5728 dependencies: \u5167\u88DC\u4E0A\u9019\u5169\u884C\u3002`);
-      }
-      const middle = block.length === 0 ? "" : `${block.join("\n")}
-`;
-      return `${pubspec.slice(0, begin)}${PUBSPEC_BEGIN}
-${middle}${pubspec.slice(end)}`;
-    };
-    syncPlugins = (project) => {
-      const plugins = project.config.plugins;
-      const pubspecPath = join5(project.appDir, "pubspec.yaml");
-      const original = readFileSync5(pubspecPath, "utf8");
-      const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
-      const created = scaffoldPluginFiles(project, plugins);
-      if (next !== original) {
-        writeFileSync2(pubspecPath, next);
-      }
-      writeFileSync2(join5(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
-      return created;
-    };
-    updateConfigPlugins = (project, update) => {
-      const previous = project.config.plugins;
-      const next = update([...previous]);
-      project.config.plugins = next;
-      let created;
-      try {
-        created = syncPlugins(project);
-      } catch (error) {
-        project.config.plugins = previous;
-        throw error;
-      }
-      const file = join5(project.root, CONFIG_FILE);
-      const raw = JSON.parse(readFileSync5(file, "utf8"));
-      if (next.length === 0) {
-        delete raw.plugins;
-      } else {
-        raw.plugins = next;
-      }
-      writeFileSync2(file, `${JSON.stringify(raw, null, 2)}
-`);
-      return created;
-    };
-    readInstalledDescriptor = (projectRoot, npmName) => {
-      const file = join5(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
-      if (!existsSync4(file)) {
-        throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
-      }
-      return parseDescriptor(JSON.parse(readFileSync5(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
-    };
-  }
-});
-
 // src/versioning.ts
 var SHELL_PACKAGE, LOCKED_PACKAGES, NPM_PACKAGES, eolOf, splitLines, indentOf, bodyRange, findLine, scalar, valueOf, parsePubspec, rewritePubspec, parseFvmrc, rewriteFvmrc, LEGACY_CLI_SPEC, CURRENT_CLI_SPEC, CLIENT_GITHUB_SPEC, classifyCliSpec, isClientGithubSpec, cliInstallSpec, readNpmSpecs, rewritePackageJson, parseLock, lowerBound, satisfies, detectDowngrades;
 var init_versioning = __esm({
@@ -1449,6 +1215,313 @@ var init_versioning = __esm({
   }
 });
 
+// src/semverRange.ts
+var RANGE, rangeToConstraint, satisfiesRange;
+var init_semverRange = __esm({
+  "src/semverRange.ts"() {
+    "use strict";
+    init_versioning();
+    RANGE = /^([\^~])?(\d+)\.(\d+)\.(\d+)$/;
+    rangeToConstraint = (range) => {
+      const match = RANGE.exec(range.trim());
+      if (!match) {
+        return null;
+      }
+      const [, op, major, minor, patch] = match;
+      const [a, b, c] = [Number(major), Number(minor), Number(patch)];
+      const base = `${a}.${b}.${c}`;
+      if (op === void 0) {
+        return `=${base}`;
+      }
+      if (op === "~") {
+        return `>=${base} <${a}.${b + 1}.0`;
+      }
+      if (a > 0) {
+        return `>=${base} <${a + 1}.0.0`;
+      }
+      return b > 0 ? `>=${base} <0.${b + 1}.0` : `>=${base} <0.0.${c + 1}`;
+    };
+    satisfiesRange = (version, range) => {
+      const constraint = rangeToConstraint(range);
+      return constraint === null ? null : satisfies(version, constraint);
+    };
+  }
+});
+
+// src/plugins.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join5, relative } from "node:path";
+var PLUGIN_DESCRIPTOR_FILE, PLUGIN_ID_PATTERN, PUBSPEC_BEGIN, PUBSPEC_END, PLUGINS_DART_FILE, DART_PACKAGE_PATTERN, DART_CLASS_PATTERN, parseDescriptor, parseRequires, FEATURE_PATTERN, parseInfoPlist, parseNative, importOf, pluginFileName, pluginFactoryName, renderPluginFile, renderPluginsDart, pluginsDir, pluginFilePath, scaffoldPluginFiles, renderPubspecBlock, applyPubspecBlock, syncPlugins, updateConfigPlugins, readInstalledDescriptor, readInstalledVersion, findRequireProblems;
+var init_plugins = __esm({
+  "src/plugins.ts"() {
+    "use strict";
+    init_config();
+    init_semverRange();
+    PLUGIN_DESCRIPTOR_FILE = "aqutter-plugin.json";
+    PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+    PUBSPEC_BEGIN = "  # aqutter-plugins:begin\uFF08\u7531 `aqutter plugin` \u7DAD\u8B77\uFF0C\u8ACB\u52FF\u624B\u6539\uFF09";
+    PUBSPEC_END = "  # aqutter-plugins:end";
+    PLUGINS_DART_FILE = "aqutter_plugins.dart";
+    DART_PACKAGE_PATTERN = /^[a-z][a-z0-9_]*$/;
+    DART_CLASS_PATTERN = /^[A-Z][A-Za-z0-9_]*$/;
+    parseDescriptor = (raw, source) => {
+      const fail11 = (reason) => {
+        throw new Error(`${source} \u4E0D\u5408\u6CD5\uFF1A${reason}`);
+      };
+      if (typeof raw !== "object" || raw === null) {
+        return fail11("\u5FC5\u9808\u662F JSON \u7269\u4EF6");
+      }
+      const value = raw;
+      if (value.schema !== 1) {
+        fail11("schema \u5FC5\u9808\u70BA 1");
+      }
+      if (typeof value.id !== "string" || !PLUGIN_ID_PATTERN.test(value.id)) {
+        fail11(`id \u5FC5\u9808\u7B26\u5408 ${PLUGIN_ID_PATTERN}`);
+      }
+      const dart = value.dart;
+      if (typeof dart !== "object" || dart === null) {
+        return fail11("\u7F3A\u5C11 dart \u5340\u584A");
+      }
+      if (typeof dart.package !== "string" || !DART_PACKAGE_PATTERN.test(dart.package)) {
+        fail11("dart.package \u5FC5\u9808\u662F Dart \u5957\u4EF6\u540D\uFF08\u5C0F\u5BEB snake_case\uFF09");
+      }
+      if (typeof dart.class !== "string" || !DART_CLASS_PATTERN.test(dart.class)) {
+        fail11("dart.class \u5FC5\u9808\u662F Dart \u985E\u5225\u540D");
+      }
+      if (dart.import !== void 0 && typeof dart.import !== "string") {
+        fail11("dart.import \u5FC5\u9808\u662F\u5B57\u4E32");
+      }
+      return {
+        schema: 1,
+        id: value.id,
+        dart: {
+          package: dart.package,
+          class: dart.class,
+          ...dart.import === void 0 ? {} : { import: dart.import }
+        },
+        ...value.native === void 0 ? {} : { native: parseNative(value.native, fail11) },
+        ...value.requires === void 0 ? {} : { requires: parseRequires(value.requires, fail11) }
+      };
+    };
+    parseRequires = (raw, fail11) => {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return fail11("requires \u5FC5\u9808\u662F\u7269\u4EF6\uFF08npm \u5957\u4EF6\u540D \u2192 \u7248\u672C\u7BC4\u570D\uFF09");
+      }
+      for (const [name, range] of Object.entries(raw)) {
+        if (name.length === 0) {
+          fail11("requires \u7684\u5957\u4EF6\u540D\u4E0D\u53EF\u70BA\u7A7A");
+        }
+        if (typeof range !== "string" || rangeToConstraint(range) === null) {
+          fail11(`requires.${name} \u5FC5\u9808\u662F ^x.y.z\u3001~x.y.z \u6216\u7CBE\u78BA\u7684 x.y.z`);
+        }
+      }
+      return raw;
+    };
+    FEATURE_PATTERN = /^[a-z][a-z0-9-]*$/;
+    parseInfoPlist = (raw, where, fail11) => {
+      if (raw === void 0) {
+        return void 0;
+      }
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return fail11(`${where}.infoPlist \u5FC5\u9808\u662F\u7269\u4EF6`);
+      }
+      for (const [key, text] of Object.entries(raw)) {
+        if (typeof text !== "string") {
+          fail11(`${where}.infoPlist.${key} \u5FC5\u9808\u662F\u5B57\u4E32`);
+        }
+      }
+      return raw;
+    };
+    parseNative = (raw, fail11) => {
+      const features = typeof raw === "object" && raw !== null ? raw.features : void 0;
+      if (typeof features !== "object" || features === null || Array.isArray(features) || Object.keys(features).length === 0) {
+        return fail11("native.features \u5FC5\u9808\u662F\u81F3\u5C11\u4E00\u500B\u529F\u80FD\u7684\u7269\u4EF6");
+      }
+      const result = {};
+      for (const [name, rawFeature] of Object.entries(features)) {
+        const where = `native.features.${name}`;
+        if (!FEATURE_PATTERN.test(name)) {
+          fail11(`\u529F\u80FD\u540D\u300C${name}\u300D\u5FC5\u9808\u7B26\u5408 ${FEATURE_PATTERN}`);
+        }
+        if (typeof rawFeature !== "object" || rawFeature === null) {
+          return fail11(`${where} \u5FC5\u9808\u662F\u7269\u4EF6`);
+        }
+        const feature = rawFeature;
+        const out = {};
+        const android = feature.android;
+        if (android !== void 0) {
+          const list = android.permissions ?? [];
+          if (!Array.isArray(list)) {
+            return fail11(`${where}.android.permissions \u5FC5\u9808\u662F\u9663\u5217`);
+          }
+          out.android = {
+            permissions: list.map((item, index) => {
+              const entry = item;
+              if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !entry.name.includes(".")) {
+                return fail11(`${where}.android.permissions[${index}].name \u5FC5\u9808\u662F\u5B8C\u6574\u7684\u6B0A\u9650\u540D\u7A31`);
+              }
+              if (entry.maxSdkVersion !== void 0 && !Number.isInteger(entry.maxSdkVersion)) {
+                fail11(`${where}.android.permissions[${index}].maxSdkVersion \u5FC5\u9808\u662F\u6574\u6578`);
+              }
+              return { name: entry.name, ...entry.maxSdkVersion === void 0 ? {} : { maxSdkVersion: entry.maxSdkVersion } };
+            })
+          };
+        }
+        for (const platform of ["ios", "macos"]) {
+          const block = feature[platform];
+          if (block !== void 0) {
+            const infoPlist = parseInfoPlist(block.infoPlist, `${where}.${platform}`, fail11);
+            out[platform] = infoPlist === void 0 ? {} : { infoPlist };
+          }
+        }
+        if (feature.note !== void 0) {
+          if (typeof feature.note !== "string") {
+            fail11(`${where}.note \u5FC5\u9808\u662F\u5B57\u4E32`);
+          }
+          out.note = feature.note;
+        }
+        result[name] = out;
+      }
+      return { features: result };
+    };
+    importOf = (entry) => entry.dart.import ?? `package:${entry.dart.package}/${entry.dart.package}.dart`;
+    pluginFileName = (id) => `${id.replace(/-/g, "_")}_plugin.dart`;
+    pluginFactoryName = (dartClass) => `build${dartClass}`;
+    renderPluginFile = (entry) => {
+      return [
+        "import 'dart:async';",
+        "",
+        "import 'package:aqutter/aqutter.dart';",
+        `import '${importOf(entry)}';`,
+        "",
+        "/// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u88E1\uFF1Baqutter CLI \u4E4B\u5F8C\u4E0D\u6703\u8986\u84CB\u9019\u500B\u6A94\u6848\u3002",
+        `FutureOr<AqutterPlugin> ${pluginFactoryName(entry.dart.class)}(AqutterBootContext context) => ${entry.dart.class}();`,
+        ""
+      ].join("\n");
+    };
+    renderPluginsDart = (plugins) => {
+      const imports = plugins.map((entry) => `plugins/${pluginFileName(entry.id)}`).sort();
+      const lines = [
+        "// \u7531 `aqutter plugin` \u7522\u751F\uFF0C\u8ACB\u52FF\u624B\u6539\uFF1B\u8981\u589E\u6E1B plugin \u8ACB\u7528 `aqutter plugin add/remove`\uFF0C",
+        "// \u8981\u7D66 plugin \u5E36\u53C3\u6578\u8ACB\u6539 lib/plugins/ \u5167\u5404 plugin \u7684\u6A94\u6848\u3002",
+        "import 'package:aqutter/aqutter.dart';",
+        ...imports.map((path) => `import '${path}';`),
+        "",
+        "/// \u50B3\u7D66 `runAqutter(plugins: aqutterPlugins)`\u3002",
+        plugins.length === 0 ? "final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[];" : `final List<AqutterPluginEntry> aqutterPlugins = <AqutterPluginEntry>[
+${plugins.map((entry) => `  AqutterPluginBuilder('${entry.id}', ${pluginFactoryName(entry.dart.class)}),`).join("\n")}
+];`,
+        ""
+      ];
+      return lines.join("\n");
+    };
+    pluginsDir = (project) => join5(project.appDir, "lib", "plugins");
+    pluginFilePath = (project, id) => join5(pluginsDir(project), pluginFileName(id));
+    scaffoldPluginFiles = (project, plugins) => {
+      const missing = [];
+      for (const entry of plugins) {
+        const file = pluginFilePath(project, entry.id);
+        if (!existsSync4(file)) {
+          missing.push(entry);
+          continue;
+        }
+        const factory = pluginFactoryName(entry.dart.class);
+        if (!new RegExp(`\\b${factory}\\s*\\(`).test(readFileSync5(file, "utf8"))) {
+          throw new Error(`${file} \u5DF2\u5B58\u5728\u4F46\u6C92\u6709\u9810\u671F\u7684\u51FD\u5F0F ${factory}\uFF1B\u8ACB\u88DC\u4E0A ${factory}(AqutterBootContext context)\uFF0C\u6216\u522A\u9664\u8A72\u6A94\u5F8C\u91CD\u65B0\u57F7\u884C aqutter plugin sync\u3002`);
+        }
+      }
+      return missing.map((entry) => {
+        const file = pluginFilePath(project, entry.id);
+        mkdirSync3(pluginsDir(project), { recursive: true });
+        writeFileSync2(file, renderPluginFile(entry));
+        return file;
+      });
+    };
+    renderPubspecBlock = (plugins, projectRoot, appDir) => {
+      return plugins.flatMap((entry) => {
+        const path = relative(appDir, join5(projectRoot, "node_modules", entry.npm)).split("\\").join("/");
+        return [`  ${entry.dart.package}:`, `    path: ${path}`];
+      });
+    };
+    applyPubspecBlock = (pubspec, block) => {
+      const begin = pubspec.indexOf(PUBSPEC_BEGIN);
+      const end = pubspec.indexOf(PUBSPEC_END);
+      if (begin === -1 || end === -1 || end < begin) {
+        throw new Error(`pubspec.yaml \u7F3A\u5C11 plugin \u53D7\u7BA1\u5340\u584A\u6A19\u8A18\uFF08${PUBSPEC_BEGIN.trim()} \u2026 ${PUBSPEC_END.trim()}\uFF09\uFF0C\u8ACB\u5728 dependencies: \u5167\u88DC\u4E0A\u9019\u5169\u884C\u3002`);
+      }
+      const middle = block.length === 0 ? "" : `${block.join("\n")}
+`;
+      return `${pubspec.slice(0, begin)}${PUBSPEC_BEGIN}
+${middle}${pubspec.slice(end)}`;
+    };
+    syncPlugins = (project) => {
+      const plugins = project.config.plugins;
+      const pubspecPath = join5(project.appDir, "pubspec.yaml");
+      const original = readFileSync5(pubspecPath, "utf8");
+      const next = applyPubspecBlock(original, renderPubspecBlock(plugins, project.root, project.appDir));
+      const created = scaffoldPluginFiles(project, plugins);
+      if (next !== original) {
+        writeFileSync2(pubspecPath, next);
+      }
+      writeFileSync2(join5(project.appDir, "lib", PLUGINS_DART_FILE), renderPluginsDart(plugins));
+      return created;
+    };
+    updateConfigPlugins = (project, update) => {
+      const previous = project.config.plugins;
+      const next = update([...previous]);
+      project.config.plugins = next;
+      let created;
+      try {
+        created = syncPlugins(project);
+      } catch (error) {
+        project.config.plugins = previous;
+        throw error;
+      }
+      const file = join5(project.root, CONFIG_FILE);
+      const raw = JSON.parse(readFileSync5(file, "utf8"));
+      if (next.length === 0) {
+        delete raw.plugins;
+      } else {
+        raw.plugins = next;
+      }
+      writeFileSync2(file, `${JSON.stringify(raw, null, 2)}
+`);
+      return created;
+    };
+    readInstalledDescriptor = (projectRoot, npmName) => {
+      const file = join5(projectRoot, "node_modules", npmName, PLUGIN_DESCRIPTOR_FILE);
+      if (!existsSync4(file)) {
+        throw new Error(`${npmName} \u5167\u627E\u4E0D\u5230 ${PLUGIN_DESCRIPTOR_FILE}\uFF0C\u5B83\u4E0D\u662F Aqutter plugin\u3002`);
+      }
+      return parseDescriptor(JSON.parse(readFileSync5(file, "utf8")), `${npmName}/${PLUGIN_DESCRIPTOR_FILE}`);
+    };
+    readInstalledVersion = (projectRoot, npmName) => {
+      const file = join5(projectRoot, "node_modules", npmName, "package.json");
+      if (!existsSync4(file)) {
+        return null;
+      }
+      const version = JSON.parse(readFileSync5(file, "utf8")).version;
+      return typeof version === "string" ? version : null;
+    };
+    findRequireProblems = (owner, descriptor, registered, installedVersion) => {
+      const problems = [];
+      for (const [name, range] of Object.entries(descriptor.requires ?? {})) {
+        if (!registered.some((entry) => entry.npm === name)) {
+          problems.push(`${owner} \u9700\u8981 ${name}\uFF08${range}\uFF09\uFF0C\u4F46\u5B83\u9084\u6C92\u767B\u8A18`);
+          continue;
+        }
+        const version = installedVersion(name);
+        if (version === null) {
+          problems.push(`${owner} \u9700\u8981 ${name}\uFF08${range}\uFF09\uFF0C\u4F46\u8B80\u4E0D\u5230\u5B83\u7684\u5DF2\u5B89\u88DD\u7248\u672C`);
+        } else if (satisfiesRange(version, range) !== true) {
+          problems.push(`${owner} \u8981\u6C42 ${name} ${range}\uFF0C\u5DF2\u5B89\u88DD ${version}`);
+        }
+      }
+      return problems;
+    };
+  }
+});
+
 // src/commands/doctor.ts
 var doctor_exports = {};
 __export(doctor_exports, {
@@ -1462,7 +1535,7 @@ __export(doctor_exports, {
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
 import { join as join6 } from "node:path";
-var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists2, detectFlutterVersion, gatherFacts, gatherNativeGaps, LABEL, runDoctor, loadExpectedProfile;
+var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists2, detectFlutterVersion, gatherFacts, gatherRequireProblems, gatherNativeGaps, LABEL, runDoctor, loadExpectedProfile;
 var init_doctor = __esm({
   "src/commands/doctor.ts"() {
     "use strict";
@@ -1614,6 +1687,14 @@ var init_doctor = __esm({
           fix: "\u4F9D\u4E0A\u5217\u88DC\u5230 App \u7684 AndroidManifest.xml\uFF0FInfo.plist\uFF08CLI \u4E0D\u6703\u66FF\u4F60\u6539\uFF09\uFF1B\u4E0D\u9700\u8981\u67D0\u500B\u529F\u80FD\u6642\u7528 `aqutter plugin add \u2026 --features=` \u7E2E\u5C0F\u7BC4\u570D\u3002"
         });
       }
+      for (const item of facts.requireProblems ?? []) {
+        add2({
+          level: "error",
+          title: `plugin\u300C${item.plugin}\u300D\u9700\u8981\u7684\u5176\u4ED6 plugin \u6C92\u6709\u6EFF\u8DB3`,
+          detail: item.problems.join("\uFF1B"),
+          fix: "\u7528 `aqutter plugin add` \u88DC\u88DD\u88AB\u9700\u8981\u7684 plugin\uFF1B\u7248\u672C\u885D\u7A81\u6642\u8ABF\u6574\u5176\u4E2D\u4E00\u500B plugin \u7684\u7248\u672C\uFF08\u4E00\u500B App \u6BCF\u500B plugin \u53EA\u80FD\u6709\u4E00\u500B\u7248\u672C\uFF09\u3002"
+        });
+      }
       return findings;
     };
     readIfExists2 = (file) => existsSync5(file) ? readFileSync6(file, "utf8") : null;
@@ -1645,8 +1726,22 @@ var init_doctor = __esm({
         fvmrc: fvmrcText === null ? null : { version: parseFvmrc(fvmrcText) },
         npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
         lock: lockText === null ? null : parseLock(lockText),
-        nativeGaps: gatherNativeGaps(project)
+        nativeGaps: gatherNativeGaps(project),
+        requireProblems: gatherRequireProblems(project)
       };
+    };
+    gatherRequireProblems = (project) => {
+      const result = [];
+      for (const entry of project.config.plugins) {
+        try {
+          const problems = findRequireProblems(entry.id, readInstalledDescriptor(project.root, entry.npm), project.config.plugins, (name) => readInstalledVersion(project.root, name));
+          if (problems.length > 0) {
+            result.push({ plugin: entry.id, problems });
+          }
+        } catch {
+        }
+      }
+      return result;
     };
     gatherNativeGaps = (project) => {
       const result = [];
@@ -3256,7 +3351,7 @@ __export(plugin_exports, {
 import { spawnSync as spawnSync3 } from "node:child_process";
 import { existsSync as existsSync10, readFileSync as readFileSync11, rmSync, writeFileSync as writeFileSync6 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join11, relative as relative3, resolve as resolve5 } from "node:path";
-var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, add, reportNativeGaps, reportCreated, remove, runPlugin;
+var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, ensureRequires, add, reportNativeGaps, reportCreated, findDependents, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
     "use strict";
@@ -3350,7 +3445,28 @@ var init_plugin = __esm({
       console.log(`  cd ${dirName} && pnpm install && flutter pub get && flutter test`);
       console.log(`  \u4E4B\u5F8C\u5728 App \u5C08\u6848\uFF1Aaqutter plugin add file:../${dirName}`);
     };
-    add = (cwd, argv) => {
+    ensureRequires = (cwd, ownerNpm, descriptor, seen) => {
+      const project = loadProject(cwd);
+      for (const [name, range] of Object.entries(descriptor.requires ?? {})) {
+        if (seen.has(name)) {
+          fail2(`plugin \u7684 requires \u5F62\u6210\u5FAA\u74B0\uFF1A${[...seen, name].join(" \u2192 ")}`);
+        }
+        if (!project.config.plugins.some((entry) => entry.npm === name)) {
+          const source = readDependencySpecs(join11(project.root, "node_modules", ownerNpm)).get(name);
+          if (source === void 0) {
+            fail2(`${ownerNpm} \u7684 requires \u5217\u4E86 ${name}\uFF0C\u4F46\u5B83\u7684 package.json dependencies \u6C92\u6709\uFF0C\u7121\u6CD5\u5224\u65B7\u8981\u5F9E\u54EA\u88E1\u5B89\u88DD\u3002`);
+          }
+          console.log(`[${TAG3}] ${descriptor.id} \u9700\u8981 ${name}\uFF08${range}\uFF09\uFF0C\u4E00\u4F75\u5B89\u88DD\u3002`);
+          add(cwd, [source], /* @__PURE__ */ new Set([...seen, name]));
+        }
+      }
+      const after = loadProject(cwd);
+      const problems = findRequireProblems(descriptor.id, descriptor, after.config.plugins, (name) => readInstalledVersion(after.root, name));
+      if (problems.length > 0) {
+        fail2(`${problems.join("\uFF1B")}\u3002\u300C${descriptor.id}\u300D\u672A\u767B\u8A18\uFF1B\u5DF2\u4E00\u4F75\u5B89\u88DD\u7684 plugin \u4ECD\u6703\u4FDD\u7559\uFF0C\u8981\u9084\u539F\u8ACB\u7528 aqutter plugin remove\u3002`);
+      }
+    };
+    add = (cwd, argv, seen = /* @__PURE__ */ new Set()) => {
       const merged = [];
       for (let index = 0; index < argv.length; index++) {
         merged.push(argv[index] === "--features" && argv[index + 1] !== void 0 ? `--features=${argv[++index]}` : argv[index]);
@@ -3376,19 +3492,21 @@ var init_plugin = __esm({
       if (project.config.plugins.some((entry) => entry.id === descriptor.id && entry.npm !== npmName)) {
         return fail2(`plugin id\u300C${descriptor.id}\u300D\u5DF2\u88AB\u53E6\u4E00\u500B\u5957\u4EF6\u4F7F\u7528\u3002`);
       }
+      ensureRequires(cwd, npmName, descriptor, /* @__PURE__ */ new Set([...seen, npmName]));
+      const latest = loadProject(cwd);
       let features;
       try {
         features = flags.features === void 0 ? void 0 : selectFeatures(descriptor, flags.features.split(",").map((name) => name.trim()).filter(Boolean));
       } catch (error) {
         return fail2(error.message);
       }
-      const created = updateConfigPlugins(project, (plugins) => [
+      const created = updateConfigPlugins(latest, (plugins) => [
         ...plugins.filter((entry) => entry.id !== descriptor.id),
         { id: descriptor.id, npm: npmName, dart: descriptor.dart, ...features === void 0 ? {} : { features } }
       ].sort((a, b) => a.id.localeCompare(b.id)));
-      console.log(`[${TAG3}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${project.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
-      reportCreated(project, created);
-      reportNativeGaps(project, descriptor, features);
+      console.log(`[${TAG3}] \u5DF2\u52A0\u5165 plugin\u300C${descriptor.id}\u300D\uFF08${npmName}\uFF09\u3002\u8ACB\u5728 ${latest.config.appDir}/ \u57F7\u884C flutter pub get\u3002`);
+      reportCreated(latest, created);
+      reportNativeGaps(latest, descriptor, features);
     };
     reportNativeGaps = (project, descriptor, features) => {
       if (descriptor.native === void 0) {
@@ -3412,17 +3530,36 @@ var init_plugin = __esm({
         console.log(`[${TAG3}] \u5DF2\u5EFA\u7ACB ${relative3(project.root, file).split("\\").join("/")}\uFF08\u8981\u7D66 plugin \u5E36\u53C3\u6578\u5C31\u6539\u9019\u500B\u6A94\uFF0C\u4E4B\u5F8C\u4E0D\u6703\u88AB\u8986\u84CB\uFF09\u3002`);
       }
     };
+    findDependents = (project, entry) => {
+      const names = [];
+      for (const other of project.config.plugins) {
+        if (other.id === entry.id) {
+          continue;
+        }
+        try {
+          if (readInstalledDescriptor(project.root, other.npm).requires?.[entry.npm] !== void 0) {
+            names.push(other.id);
+          }
+        } catch {
+        }
+      }
+      return names;
+    };
     remove = (cwd, argv) => {
-      const { positional } = parseArgs(argv.filter((arg) => arg !== "--purge"));
+      const { positional } = parseArgs(argv.filter((arg) => arg !== "--purge" && arg !== "--force"));
       const purge = argv.includes("--purge");
       const id = positional[0];
       if (!id) {
-        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id> [--purge]");
+        return fail2("\u7528\u6CD5\uFF1Aaqutter plugin remove <id> [--purge] [--force]");
       }
       const project = loadProject(cwd);
       const entry = project.config.plugins.find((plugin) => plugin.id === id);
       if (!entry) {
         return fail2(`\u5C08\u6848\u5167\u6C92\u6709 plugin\u300C${id}\u300D\u3002`);
+      }
+      const dependents = findDependents(project, entry);
+      if (dependents.length > 0 && !argv.includes("--force")) {
+        return fail2(`\u300C${id}\u300D\u4ECD\u88AB ${dependents.map((name) => `\u300C${name}\u300D`).join("\u3001")} \u7684 requires \u9700\u8981\uFF1B\u5148\u79FB\u9664\u5B83\u5011\uFF0C\u6216\u52A0 --force \u5F37\u5236\u79FB\u9664\u3002`);
       }
       updateConfigPlugins(project, (plugins) => plugins.filter((plugin) => plugin.id !== id));
       const pm = detectPackageManager(project.root);
