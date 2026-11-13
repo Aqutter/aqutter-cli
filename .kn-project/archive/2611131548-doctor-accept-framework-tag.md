@@ -1,0 +1,33 @@
+# 2611131548 - doctor-accept-framework-tag
+
+- Created: 2026-11-13 15:48 / Archived: 2026-11-13 16:05
+- Issue: Aqutter/aqutter-cli#22
+- Milestone: N/A / Base Branch: main
+
+## Summary
+照 README 以 `#0.0.0`（框架版本 tag）安裝的專案，`aqutter doctor` 不再對兩種正常狀態發警告：`@aqutter/aqutter` 寫成 `github:Aqutter/aqutter-js#<框架 tag>`，以及殼 ref 用框架 tag 時殼的 lock 與 manifest sha 不同。
+這兩處沿用 doctor 已有的「開發階段允許 tag」原則；殼 ref 為 sha、其他 ref 的 client、以及 aqutter_core 的 lock 仍照原規則比對。
+
+## Cross-Repo Scope
+無（單一 repo）。
+
+## Key Decisions
+- **[Phase 0]** Milestone 不指定，PR 併回 main — 理由：開發階段版本一律 0.0.0。
+- **[範圍]** client 依賴與殼 lock 兩個警告一起修 — 理由：同一根因（tag 隨 main 移動，與 sha 比對不相容）。
+- **[執行中]** 起因是 aqutter#49／PR #50：同步 manifest 的 sha 後警告仍在，才確認是比對規則本身的問題。
+
+## Deviations
+None
+
+## Impact Files
+- `src/commands/doctor.ts:225` — client 依賴接受框架 tag 形式
+- `src/commands/doctor.ts:249` — 殼 ref 為框架 tag 時略過殼 lock 的 sha 比對
+- `test/versioning.test.ts:431` — 新增 4 個案例（共 225 個測試通過）
+- `dist/aqutter.mjs` — 重新 `pnpm build` 的產物
+- `.kn-project/wiki/platform/manifest.md:42` — 規則表新增「doctor 接受框架 tag」一列
+
+## Wiki Changes
+
+| 頁面 | 日期 | 版本 | 變動 | Issue | PR |
+|---|---|---|---|---|---|
+| `platform/manifest.md` | 2026-11-13 | — | doctor 接受框架 tag 形式的 client 依賴與殼 lock | [#22](https://github.com/Aqutter/aqutter-cli/issues/22) | [PR #23](https://github.com/Aqutter/aqutter-cli/pull/23) |

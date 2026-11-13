@@ -1,5 +1,5 @@
 window.WIKI_MANIFEST={
-"title":"aqutter-cli",
+"title":"Aqutter",
 "repoUrl":"https://github.com/Aqutter/aqutter-cli",
 "repoBranch":"main",
 "appflow":null,

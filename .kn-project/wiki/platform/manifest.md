@@ -37,6 +37,7 @@ https://raw.githubusercontent.com/Aqutter/aqutter/main/manifest/releases.json
 | 規則 | 說明 |
 |---|---|
 | 版本只用 commit | 殼與 aqutter_core 的 ref 一律是完整的 commit 值，不接受 tag |
+| doctor 接受框架 tag | 開發階段專案端可把殼 ref 與 client 依賴寫成框架版本 tag（如 0.0.0）；此時 doctor 視 client 為一致，且不拿殼的 lock 與清單的 commit 比對，因為 tag 會隨 main 移動 |
 | 主機允許清單 | git 網址只接受 github.com 的 https 位置 |
 | 格式過新 | 清單的格式版本比 CLI 支援的新時直接中止並請使用者升級，不退回其他來源 |
 | 已撤回的版本 | status 為 yanked 的版本一律拒絕使用 |
