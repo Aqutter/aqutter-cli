@@ -31,7 +31,7 @@ https://raw.githubusercontent.com/Aqutter/aqutter/main/manifest/releases.json
 | doctor | Flutter 基準、sdk 約束、殼與 aqutter_core 的 commit、client 安裝字串、最低 CLI 版本 |
 | upgrade | 同上，並可用 --to 指定框架版本，預設取 stable 頻道 |
 
-來源：1. [init.ts](../../../src/commands/init.ts#L110-L120)　2. [plugin.ts](../../../src/commands/plugin.ts)　3. [doctor.ts](../../../src/commands/doctor.ts#L50-L65)　4. [upgrade.ts](../../../src/commands/upgrade.ts)
+來源：1. [init.ts](../../../src/commands/init.ts#L110-L120)　2. [plugin.ts](../../../src/commands/plugin.ts)　3. [doctor.ts](../../../src/commands/doctor.ts#L51-L66)　4. [upgrade.ts](../../../src/commands/upgrade.ts)
 
 ## 規則
 | 規則 | 說明 |

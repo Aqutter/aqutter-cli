@@ -7,6 +7,7 @@
 //   3. <appDir>/.fvmrc 的 Flutter 版本（只在檔案已存在時檢查；FVM 是選配，框架不要求）
 //   4. package.json 裡 @aqutter/aqutter-cli 的安裝語法、@aqutter/aqutter（github:Aqutter/aqutter-js#<ref>）的 ref
 //   5. <appDir>/pubspec.lock 鎖的 commit 是否與 release 記載的 commit 一致
+//   5b. Windows 上 appDir 的絕對路徑是否過長（建置產物可能超過 MAX_PATH 260）
 // 「框架版本」取自 release manifest 的 channels.stable（見 expectedProfile、src/manifest.ts）。
 //
 // 用法：aqutter doctor [--offline | --refresh]
@@ -16,7 +17,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import pkg from '../../package.json'
 import type { Project } from '../config.ts'
@@ -91,7 +92,18 @@ export interface Facts {
   nativeGaps?: { plugin: string, gaps: string[] }[]
   /** 已登記的 plugin 的 `requires` 沒滿足的地方（缺 plugin 或版本不符）。 */
   requireProblems?: { plugin: string, problems: string[] }[]
+  /** App 目錄的絕對路徑（檢查 Windows 路徑長度用）；未提供就不檢查。 */
+  appDirPath?: string
+  /** 執行平台（`process.platform`）；未提供就不檢查路徑長度。 */
+  platform?: NodeJS.Platform
 }
+
+/**
+ * Windows 上 App 目錄絕對路徑的警告閾值（字元數）。
+ * 依據：建置產物相對 appDir 最深約 162 字元，加上 appDir 要在 MAX_PATH（260）內，理論邊界約 98；
+ * 實測 123 字元建置失敗、18 字元成功。plugin 名稱特別長時，這個閾值可能漏報。
+ */
+export const WINDOWS_APP_DIR_MAX_LENGTH = 100
 
 const UPGRADE_HINT = '執行 `aqutter upgrade`'
 const short = (sha: string): string => sha.slice(0, 7)
@@ -247,6 +259,22 @@ export const diagnose = (facts: Facts): Finding[] => {
     }
   }
 
+  // 5b. Windows 路徑長度：建置產物的路徑可能超過 MAX_PATH（260），讓 flutter build windows 在跑了很久之後才失敗
+  if (facts.platform === 'win32' && facts.appDirPath !== undefined) {
+    const length = facts.appDirPath.length
+    if (length > WINDOWS_APP_DIR_MAX_LENGTH) {
+      add({
+        level: 'warn',
+        title: `App 目錄路徑有 ${length} 個字元（超過 ${WINDOWS_APP_DIR_MAX_LENGTH}）：Windows 建置可能因路徑過長而失敗`,
+        detail: `${facts.appDirPath}\n         建置產物的路徑會再加上約 160 個字元，可能超過 Windows 的 260 字元限制（即使系統已開啟長路徑也可能發生）。`,
+        fix: '把專案搬到較短的路徑（例如 C:\\proj\\app）再建置。',
+      })
+    }
+    else {
+      add({ level: 'ok', title: `App 目錄路徑長度 ${length}` })
+    }
+  }
+
   // 6. plugin 宣告的原生設定是否已補上（只讀；缺漏是警告：建置不受影響，執行時才出問題）
   for (const item of facts.nativeGaps ?? []) {
     add({
@@ -306,6 +334,8 @@ export const gatherFacts = (project: Project, expected: ExpectedProfile): Facts 
     lock: lockText === null ? null : parseLock(lockText),
     nativeGaps: gatherNativeGaps(project),
     requireProblems: gatherRequireProblems(project),
+    appDirPath: resolve(project.appDir),
+    platform: process.platform,
   }
 }
 
