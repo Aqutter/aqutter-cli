@@ -278,14 +278,14 @@ var init_shared = __esm({
     };
     PORT_PROBE_TIMEOUT_MS = 500;
     isPortInUse = async (port) => {
-      const probe = (host) => new Promise((resolve6) => {
+      const probe = (host) => new Promise((resolve7) => {
         const socket = connect({
           port,
           host
         });
         const done = (inUse) => {
           socket.destroy();
-          resolve6(inUse);
+          resolve7(inUse);
         };
         socket.setTimeout(PORT_PROBE_TIMEOUT_MS, () => done(false));
         socket.once("connect", () => done(true));
@@ -296,7 +296,7 @@ var init_shared = __esm({
     };
     waitForHttpReady = async (urls, options) => {
       const fetchFn = options.fetchFn ?? (async (url) => fetch(url, { signal: AbortSignal.timeout(Math.max(options.intervalMs * 4, 2e3)) }));
-      const sleepFn = options.sleepFn ?? (async (ms) => new Promise((resolve6) => setTimeout(resolve6, ms)));
+      const sleepFn = options.sleepFn ?? (async (ms) => new Promise((resolve7) => setTimeout(resolve7, ms)));
       const now = options.now ?? Date.now;
       const started = now();
       for (; ; ) {
@@ -400,9 +400,9 @@ var init_shared = __esm({
           bufferedLines.push(line);
           return;
         }
-        const resolve6 = resolvePendingLine;
+        const resolve7 = resolvePendingLine;
         resolvePendingLine = null;
-        resolve6(line);
+        resolve7(line);
       });
       rl.on("close", () => {
         if (resolvePendingLine !== null) {
@@ -414,8 +414,8 @@ var init_shared = __esm({
         if (buffered !== void 0) {
           return Promise.resolve(buffered);
         }
-        return new Promise((resolve6) => {
-          resolvePendingLine = resolve6;
+        return new Promise((resolve7) => {
+          resolvePendingLine = resolve7;
         });
       };
       let masked = false;
@@ -1525,6 +1525,7 @@ ${middle}${pubspec.slice(end)}`;
 // src/commands/doctor.ts
 var doctor_exports = {};
 __export(doctor_exports, {
+  WINDOWS_APP_DIR_MAX_LENGTH: () => WINDOWS_APP_DIR_MAX_LENGTH,
   detectFlutterVersion: () => detectFlutterVersion,
   diagnose: () => diagnose,
   expectedProfile: () => expectedProfile,
@@ -1534,8 +1535,8 @@ __export(doctor_exports, {
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { join as join6 } from "node:path";
-var TAG, expectedProfile, UPGRADE_HINT, short, diagnose, readIfExists2, detectFlutterVersion, gatherFacts, gatherRequireProblems, gatherNativeGaps, LABEL, runDoctor, loadExpectedProfile;
+import { join as join6, resolve as resolve2 } from "node:path";
+var TAG, expectedProfile, WINDOWS_APP_DIR_MAX_LENGTH, UPGRADE_HINT, short, diagnose, readIfExists2, detectFlutterVersion, gatherFacts, gatherRequireProblems, gatherNativeGaps, LABEL, runDoctor, loadExpectedProfile;
 var init_doctor = __esm({
   "src/commands/doctor.ts"() {
     "use strict";
@@ -1556,6 +1557,7 @@ var init_doctor = __esm({
       clientSpec: release.client.spec,
       cliMin: release.cli.min
     });
+    WINDOWS_APP_DIR_MAX_LENGTH = 100;
     UPGRADE_HINT = "\u57F7\u884C `aqutter upgrade`";
     short = (sha) => sha.slice(0, 7);
     diagnose = (facts) => {
@@ -1679,6 +1681,20 @@ var init_doctor = __esm({
           }
         }
       }
+      if (facts.platform === "win32" && facts.appDirPath !== void 0) {
+        const length = facts.appDirPath.length;
+        if (length > WINDOWS_APP_DIR_MAX_LENGTH) {
+          add2({
+            level: "warn",
+            title: `App \u76EE\u9304\u8DEF\u5F91\u6709 ${length} \u500B\u5B57\u5143\uFF08\u8D85\u904E ${WINDOWS_APP_DIR_MAX_LENGTH}\uFF09\uFF1AWindows \u5EFA\u7F6E\u53EF\u80FD\u56E0\u8DEF\u5F91\u904E\u9577\u800C\u5931\u6557`,
+            detail: `${facts.appDirPath}
+         \u5EFA\u7F6E\u7522\u7269\u7684\u8DEF\u5F91\u6703\u518D\u52A0\u4E0A\u7D04 160 \u500B\u5B57\u5143\uFF0C\u53EF\u80FD\u8D85\u904E Windows \u7684 260 \u5B57\u5143\u9650\u5236\uFF08\u5373\u4F7F\u7CFB\u7D71\u5DF2\u958B\u555F\u9577\u8DEF\u5F91\u4E5F\u53EF\u80FD\u767C\u751F\uFF09\u3002`,
+            fix: "\u628A\u5C08\u6848\u642C\u5230\u8F03\u77ED\u7684\u8DEF\u5F91\uFF08\u4F8B\u5982 C:\\proj\\app\uFF09\u518D\u5EFA\u7F6E\u3002"
+          });
+        } else {
+          add2({ level: "ok", title: `App \u76EE\u9304\u8DEF\u5F91\u9577\u5EA6 ${length}` });
+        }
+      }
       for (const item of facts.nativeGaps ?? []) {
         add2({
           level: "warn",
@@ -1727,7 +1743,9 @@ var init_doctor = __esm({
         npmSpecs: packageText === null ? [] : readNpmSpecs(packageText),
         lock: lockText === null ? null : parseLock(lockText),
         nativeGaps: gatherNativeGaps(project),
-        requireProblems: gatherRequireProblems(project)
+        requireProblems: gatherRequireProblems(project),
+        appDirPath: resolve2(project.appDir),
+        platform: process.platform
       };
     };
     gatherRequireProblems = (project) => {
@@ -1797,7 +1815,7 @@ var init_doctor = __esm({
 
 // src/template.ts
 import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync7, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync3, copyFileSync } from "node:fs";
-import { dirname as dirname2, join as join7, resolve as resolve2 } from "node:path";
+import { dirname as dirname2, join as join7, resolve as resolve3 } from "node:path";
 import { fileURLToPath } from "node:url";
 var GITIGNORE_STORED_NAME, BINARY_EXTENSIONS, isBinary, substitute, findTemplateRoot, renderTree;
 var init_template = __esm({
@@ -1843,7 +1861,7 @@ var init_template = __esm({
         if (existsSync6(join7(candidate, "app"))) {
           return candidate;
         }
-        dir = resolve2(dir, "..");
+        dir = resolve3(dir, "..");
       }
       throw new Error("\u627E\u4E0D\u5230 Aqutter \u7BC4\u672C\u76EE\u9304\uFF08template/\uFF09\u3002CLI \u5B89\u88DD\u662F\u5426\u5B8C\u6574\uFF1F");
     };
@@ -1890,7 +1908,7 @@ __export(init_exports, {
   usePathDependency: () => usePathDependency
 });
 import { appendFileSync, existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "node:fs";
-import { basename as basename2, isAbsolute as isAbsolute2, join as join8, relative as relative2, resolve as resolve3 } from "node:path";
+import { basename as basename2, isAbsolute as isAbsolute2, join as join8, relative as relative2, resolve as resolve4 } from "node:path";
 var TAG2, fail, toAppName, toCamel, toDisplayName, detectFramework, GITIGNORE_ENTRIES, appendGitignore, usePathDependency, runInit;
 var init_init = __esm({
   "src/commands/init.ts"() {
@@ -1958,7 +1976,7 @@ ${missing.join("\n")}
     runInit = async (cwd, argv) => {
       const { flags } = parseArgs(argv.filter((arg) => arg !== "--force" && arg !== "--offline" && arg !== "--refresh"));
       const force = argv.includes("--force");
-      const root = resolve3(cwd);
+      const root = resolve4(cwd);
       let packageName = basename2(root);
       const packageJson = join8(root, "package.json");
       if (existsSync7(packageJson)) {
@@ -1980,7 +1998,7 @@ ${missing.join("\n")}
         fail(`--framework \u9700\u70BA ${FRAMEWORKS.join(" / ")}\uFF0C\u6536\u5230\u300C${framework}\u300D\u3002`);
       }
       const appDirName = flags["app-dir"] ?? DEFAULT_CONFIG.appDir;
-      const appDir = resolve3(root, appDirName);
+      const appDir = resolve4(root, appDirName);
       const shellRef = flags["shell-ref"] ?? (flags["shell-path"] ? package_default.version : (await loadExpectedProfile(readManifestFlags(argv))).expected.version);
       const configFile = join8(root, CONFIG_FILE);
       if (existsSync7(configFile) && !force) {
@@ -2008,7 +2026,7 @@ ${missing.join("\n")}
       if (flags["shell-path"]) {
         const pubspecPath = join8(appDir, "pubspec.yaml");
         const shellFlag = flags["shell-path"];
-        const rel = isAbsolute2(shellFlag) ? shellFlag : relative2(appDir, resolve3(root, shellFlag)).split("\\").join("/");
+        const rel = isAbsolute2(shellFlag) ? shellFlag : relative2(appDir, resolve4(root, shellFlag)).split("\\").join("/");
         writeFileSync4(pubspecPath, usePathDependency(readFileSync8(pubspecPath, "utf8"), rel));
         console.log(`[${TAG2}] \u6BBC\u4F9D\u8CF4\u6539\u6307\u5411\u672C\u6A5F\u8DEF\u5F91\uFF1A${rel}`);
       }
@@ -3027,7 +3045,7 @@ __export(bundle_exports, {
 });
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join9, resolve as resolve4 } from "node:path";
+import { join as join9, resolve as resolve5 } from "node:path";
 var BUNDLE_SIGNATURE_PREFIX, DEFAULT_KEY_DIR, PRIVATE_KEY_FILE, SIGNING_KEY_ENV, VERSION_ENTRY, bundleSignatureMessage, publicKeyBase64, generateSigningKey, readBundleVersion, signBundle, parseBundleArgs, USAGE, runKeygen, loadPrivateKey, runSign, runBundle;
 var init_bundle = __esm({
   "src/commands/bundle.ts"() {
@@ -3129,7 +3147,7 @@ ${sha256Hex.toLowerCase()}
       if (args.positional.length > 0) {
         throw new ConfigError(USAGE);
       }
-      const dir = resolve4(cwd, args.flags.out ?? DEFAULT_KEY_DIR);
+      const dir = resolve5(cwd, args.flags.out ?? DEFAULT_KEY_DIR);
       const keyFile = join9(dir, PRIVATE_KEY_FILE);
       if (existsSync8(keyFile)) {
         throw new ConfigError(`${keyFile} \u5DF2\u5B58\u5728\uFF0C\u4E0D\u8986\u84CB\u3002\u8981\u7522\u751F\u65B0\u7684\u91D1\u9470\u8ACB\u63DB\u4E00\u500B\u8CC7\u6599\u593E\uFF08--out\uFF09\u6216\u5148\u81EA\u884C\u8655\u7406\u820A\u6A94\u3002`);
@@ -3145,7 +3163,7 @@ ${sha256Hex.toLowerCase()}
     };
     loadPrivateKey = (cwd, keyFlag) => {
       if (keyFlag !== void 0) {
-        const file = resolve4(cwd, keyFlag);
+        const file = resolve5(cwd, keyFlag);
         if (!existsSync8(file)) {
           throw new ConfigError(`\u627E\u4E0D\u5230\u79C1\u9470\u6A94\uFF1A${file}`);
         }
@@ -3161,7 +3179,7 @@ ${sha256Hex.toLowerCase()}
       if (args.positional.length !== 1) {
         throw new ConfigError(USAGE);
       }
-      const zipFile = resolve4(cwd, args.positional[0]);
+      const zipFile = resolve5(cwd, args.positional[0]);
       if (!existsSync8(zipFile)) {
         throw new ConfigError(`\u627E\u4E0D\u5230\u7DB2\u9801\u5305\uFF1A${zipFile}`);
       }
@@ -3350,7 +3368,7 @@ __export(plugin_exports, {
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
 import { existsSync as existsSync10, readFileSync as readFileSync11, rmSync, writeFileSync as writeFileSync6 } from "node:fs";
-import { isAbsolute as isAbsolute3, join as join11, relative as relative3, resolve as resolve5 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join11, relative as relative3, resolve as resolve6 } from "node:path";
 var TAG3, fail2, capitalize, toClassName, toSnake, runPm, readDependencySpecs, pickInstalledName, clientRefOf, create, ensureRequires, add, reportNativeGaps, reportCreated, findDependents, remove, runPlugin;
 var init_plugin = __esm({
   "src/commands/plugin.ts"() {
@@ -3409,7 +3427,7 @@ var init_plugin = __esm({
         return fail2(`\u7528\u6CD5\uFF1Aaqutter plugin create <id>\uFF08id \u70BA\u5C0F\u5BEB\u5B57\u6BCD\u958B\u982D\u3001\u50C5\u542B\u5C0F\u5BEB\u5B57\u6BCD / \u6578\u5B57 / \u9023\u5B57\u865F\uFF0C\u4F8B\u5982 haptics\uFF09`);
       }
       const dirName = flags.dir ?? `aqutter-plugin-${id}`;
-      const target = resolve5(cwd, dirName);
+      const target = resolve6(cwd, dirName);
       if (existsSync10(target)) {
         return fail2(`${dirName} \u5DF2\u5B58\u5728\u3002`);
       }
@@ -3436,7 +3454,7 @@ var init_plugin = __esm({
       const { written } = renderTree(join11(findTemplateRoot(), "plugin"), target, variables);
       if (flags["shell-path"]) {
         const shellFlag = flags["shell-path"];
-        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve5(cwd, shellFlag)).split("\\").join("/");
+        const rel = isAbsolute3(shellFlag) ? shellFlag : relative3(target, resolve6(cwd, shellFlag)).split("\\").join("/");
         const pubspec = join11(target, "pubspec.yaml");
         writeFileSync6(pubspec, usePathDependency(readFileSync11(pubspec, "utf8"), rel));
       }
@@ -3821,7 +3839,7 @@ var init_dev = __esm({
       console.error(`[${TAG4}] ${message}`);
       process.exit(1);
     };
-    sleep = (ms) => new Promise((resolve6) => setTimeout(resolve6, ms));
+    sleep = (ms) => new Promise((resolve7) => setTimeout(resolve7, ms));
     isIos = (device) => device.targetPlatform?.startsWith("ios") ?? false;
     isAndroid = (device) => device.targetPlatform?.startsWith("android") ?? false;
     DESKTOP_PLATFORMS = /* @__PURE__ */ new Set(["darwin", "windows-x64", "linux-x64"]);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { diagnose } from '../src/commands/doctor.ts'
+import { WINDOWS_APP_DIR_MAX_LENGTH, diagnose } from '../src/commands/doctor.ts'
 import type { ExpectedProfile, Facts } from '../src/commands/doctor.ts'
 import { planUpgrade } from '../src/commands/upgrade.ts'
 import {
@@ -297,6 +297,40 @@ const levels = (facts: Facts): string[] => diagnose(facts).filter(f => f.level !
 describe('diagnose', () => {
   it('reports no problems for an up-to-date project', () => {
     expect(levels(goodFacts())).toEqual([])
+  })
+
+  describe('Windows app directory path length', () => {
+    const pathOfLength = (length: number): string => `C:\\${'a'.repeat(length - 3)}`
+    const pathFindings = (platform: NodeJS.Platform, length: number): ReturnType<typeof diagnose> =>
+      diagnose({ ...goodFacts(), platform, appDirPath: pathOfLength(length) }).filter(f => f.title.includes('路徑'))
+
+    it('warns, never errors, when the path is longer than the limit on win32', () => {
+      const found = pathFindings('win32', WINDOWS_APP_DIR_MAX_LENGTH + 1)
+
+      expect(found).toHaveLength(1)
+      expect(found[0].level).toBe('warn')
+      expect(found[0].title).toContain(String(WINDOWS_APP_DIR_MAX_LENGTH + 1))
+      expect(found[0].fix).toBeTruthy()
+    })
+
+    it('is ok when the path is exactly at the limit', () => {
+      const found = pathFindings('win32', WINDOWS_APP_DIR_MAX_LENGTH)
+
+      expect(found.map(f => f.level)).toEqual(['ok'])
+    })
+
+    it('is ok for a short path', () => {
+      expect(pathFindings('win32', 18).map(f => f.level)).toEqual(['ok'])
+    })
+
+    it('does not check other platforms', () => {
+      expect(pathFindings('darwin', 300)).toEqual([])
+      expect(pathFindings('linux', 300)).toEqual([])
+    })
+
+    it('does not check when the facts carry no path', () => {
+      expect(diagnose({ ...goodFacts(), platform: 'win32' }).filter(f => f.title.includes('路徑'))).toEqual([])
+    })
   })
 
   it('accepts a shell ref that is the framework version tag', () => {
