@@ -1650,7 +1650,7 @@ var init_doctor = __esm({
         }
       }
       if (clientSpec !== void 0 && isClientGithubSpec(clientSpec.spec)) {
-        if (clientSpec.spec === expected.clientSpec) {
+        if (clientSpec.spec === expected.clientSpec || clientSpec.spec === `github:Aqutter/aqutter-js#${expected.version}`) {
           add2({ level: "ok", title: "@aqutter/aqutter \u8207\u6846\u67B6\u7248\u672C\u4E00\u81F4" });
         } else {
           add2({
@@ -1672,6 +1672,8 @@ var init_doctor = __esm({
           }
           if (entry.resolvedRef === wanted[name]) {
             add2({ level: "ok", title: `${name} lock \u8207\u6846\u67B6\u7248\u672C\u4E00\u81F4\uFF08${short(entry.resolvedRef)}\uFF09` });
+          } else if (name === SHELL_PACKAGE && facts.pubspec?.shell?.kind !== "path" && facts.pubspec?.shell?.ref === expected.version) {
+            add2({ level: "ok", title: `${name} lock \u9396\u5728 ${short(entry.resolvedRef)}\uFF08\u6BBC ref \u7528\u6846\u67B6\u7248\u672C tag\uFF0C\u4E0D\u6BD4\u5C0D manifest \u7684 sha\uFF09` });
           } else {
             add2({
               level: "warn",
