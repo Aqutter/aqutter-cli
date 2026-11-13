@@ -421,6 +421,47 @@ describe('diagnose', () => {
     expect(found[0]).toMatch(/^warn:aqutter 的 lock 與框架版本 0\.1\.0 不一致/)
   })
 
+  describe('framework version tag (development stage)', () => {
+    const tagFacts = (): Facts => ({
+      ...goodFacts(),
+      pubspec: parsePubspec(rewritePubspec(OLD_PUBSPEC, { sdk: EXPECTED.sdk, flutter: EXPECTED.flutter, shellRef: EXPECTED.version }).text),
+    })
+
+    it('accepts the tag form of the client dependency', () => {
+      const facts = tagFacts()
+      facts.npmSpecs = [{ name: '@aqutter/aqutter', spec: `github:Aqutter/aqutter-js#${EXPECTED.version}` }]
+
+      expect(levels(facts)).toEqual([])
+    })
+
+    it('still warns for a client dependency pinned to another ref', () => {
+      const facts = goodFacts()
+      facts.npmSpecs = [{ name: '@aqutter/aqutter', spec: 'github:Aqutter/aqutter-js#9.9.9' }]
+
+      expect(levels(facts)[0]).toMatch(/^warn:@aqutter\/aqutter 與框架版本/)
+    })
+
+    it('does not compare the shell lock with the manifest sha when the shell ref is the framework tag', () => {
+      const facts = tagFacts()
+      facts.lock = {
+        aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: EXPECTED.version, resolvedRef: 'c'.repeat(40) },
+        aqutter_core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: CORE_SHA, resolvedRef: CORE_SHA },
+      }
+
+      expect(levels(facts)).toEqual([])
+    })
+
+    it('still compares aqutter_core when the shell ref is the framework tag', () => {
+      const facts = tagFacts()
+      facts.lock = {
+        aqutter: { url: 'https://github.com/Aqutter/aqutter.git', ref: EXPECTED.version, resolvedRef: 'c'.repeat(40) },
+        aqutter_core: { url: 'https://github.com/Aqutter/aqutter_core.git', ref: CORE_SHA, resolvedRef: 'd'.repeat(40) },
+      }
+
+      expect(levels(facts)[0]).toMatch(/^warn:aqutter_core 的 lock/)
+    })
+  })
+
   it('checks aqutter_core against the core commit', () => {
     const facts = goodFacts()
     facts.lock = {

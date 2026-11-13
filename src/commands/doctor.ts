@@ -222,7 +222,8 @@ export const diagnose = (facts: Facts): Finding[] => {
     }
   }
   if (clientSpec !== undefined && isClientGithubSpec(clientSpec.spec)) {
-    if (clientSpec.spec === expected.clientSpec) {
+    // 開發階段允許寫框架版本的 tag（與殼 ref 同一個原則）：tag 會隨 main 移動，manifest 記的 sha 追不上
+    if (clientSpec.spec === expected.clientSpec || clientSpec.spec === `github:Aqutter/aqutter-js#${expected.version}`) {
       add({ level: 'ok', title: '@aqutter/aqutter 與框架版本一致' })
     }
     else {
@@ -248,6 +249,10 @@ export const diagnose = (facts: Facts): Finding[] => {
       }
       if (entry.resolvedRef === wanted[name]) {
         add({ level: 'ok', title: `${name} lock 與框架版本一致（${short(entry.resolvedRef)}）` })
+      }
+      // 殼 ref 寫框架版本 tag 時，lock 記的是 tag 當下解析出的提交；tag 隨 main 移動，不會等於 manifest 記的 sha，不比對
+      else if (name === SHELL_PACKAGE && facts.pubspec?.shell?.kind !== 'path' && facts.pubspec?.shell?.ref === expected.version) {
+        add({ level: 'ok', title: `${name} lock 鎖在 ${short(entry.resolvedRef)}（殼 ref 用框架版本 tag，不比對 manifest 的 sha）` })
       }
       else {
         add({
