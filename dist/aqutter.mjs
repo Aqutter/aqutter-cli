@@ -480,7 +480,7 @@ var init_manifestSnapshot = __esm({
   "src/manifestSnapshot.json"() {
     manifestSnapshot_default = {
       schema: 1,
-      generatedAt: "2026-10-31T12:16:52Z",
+      generatedAt: "2026-11-14T08:09:13Z",
       channels: {
         stable: "0.0.0"
       },
@@ -488,20 +488,20 @@ var init_manifestSnapshot = __esm({
         "0.0.0": {
           status: "supported",
           flutter: {
-            baseline: "3.47.8"
+            baseline: "3.50.0"
           },
-          dart: ">=3.13.7 <4.0.0",
+          dart: ">=3.14.0 <4.0.0",
           shell: {
             url: "https://github.com/Aqutter/aqutter.git",
             path: "shell",
-            ref: "b5f60fde4aef06b9d129ef1abb0ff5bdcea11320"
+            ref: "ef94f7376ce4d771494a3e090f3dbcfd5fac5272"
           },
           core: {
             url: "https://github.com/Aqutter/aqutter_core.git",
-            ref: "8833f948c6e3a38cd2ad3cca4b849759d9a83104"
+            ref: "aa44625f6d68daa4a1e2c1d6d4633a8b460b4669"
           },
           client: {
-            spec: "github:Aqutter/aqutter-js#bc84de7498fadd4263c1a2cf11a1af64fa8063db"
+            spec: "github:Aqutter/aqutter-js#6a71990cd365542b388d5054c6a320511fda3353"
           },
           cli: {
             min: "0.0.0"
