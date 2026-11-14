@@ -26,7 +26,7 @@ plugins {
     // 故改用自有套件 aqutter_core，其 Android 端已支援 AGP 9（見 ../pubspec.yaml）。
     // 改回 pub 上的套件就必須把 AGP 降回 8.x。
     id("com.android.application") version "9.3.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.4.0" apply false
+    id("org.jetbrains.kotlin.android") version "2.4.20" apply false
 }
 
 include(":app")
