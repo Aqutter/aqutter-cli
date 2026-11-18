@@ -18,7 +18,7 @@
 - **[完成後]** `aqutter`、`aqutter-cli` commit + 開 PR；`aqutter-nuxt-app` 依其 `project.md` 直接推 `main`。
 
 ## Deviations
-無偏離計畫。本 repo 沒有 wiki，未做 wikification。
+無偏離計畫。wiki 已檢視（`platform/manifest.md`、`platform/architecture.md`、`dev/verification.md`），沒有寫死 ref 或快照內容，未發現過時說法，不需修改。
 
 ## Impact Files
 - `src/manifestSnapshot.json` — 由 `pnpm manifest:sync` 產生，與正本 `cmp` 逐字相同
