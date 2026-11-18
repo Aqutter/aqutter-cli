@@ -480,7 +480,7 @@ var init_manifestSnapshot = __esm({
   "src/manifestSnapshot.json"() {
     manifestSnapshot_default = {
       schema: 1,
-      generatedAt: "2026-11-18T06:31:27Z",
+      generatedAt: "2026-11-18T08:17:00Z",
       channels: {
         stable: "0.0.0"
       },
@@ -498,7 +498,7 @@ var init_manifestSnapshot = __esm({
           },
           core: {
             url: "https://github.com/Aqutter/aqutter_core.git",
-            ref: "d431f0ecc88e685e057fea6c930048390d28f603"
+            ref: "84d917459d01ba7bd7424c131540db23e890851f"
           },
           client: {
             spec: "github:Aqutter/aqutter-js#3f250d6d9c09c48a9c0cfd7e783b8c2a884734fe"
